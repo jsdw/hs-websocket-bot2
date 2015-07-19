@@ -1,5 +1,4 @@
 {-# LANGUAGE 
-    FlexibleInstances,
     DataKinds,
     TypeFamilies,
     KindSignatures,

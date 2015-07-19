@@ -4,6 +4,7 @@
 
 import Internal.Routing
 import Internal.Commands
+import Internal.WebSocket
 
 import qualified Data.Text          as T
 import           Data.Monoid        ((<>))
