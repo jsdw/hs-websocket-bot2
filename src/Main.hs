@@ -4,6 +4,7 @@ import Internal.Args
 import Internal.Types
 
 import Commands
+import Parsers
 
 import           System.Environment  (getArgs)
 import qualified Data.Text           as T
@@ -25,7 +26,7 @@ import           Control.Applicative ((<$>),(<*>),(<|>))
 routes :: Routes (RouteStateIO ())
 routes = do
 
-    addRoute ("hello" :: String) $ do
+    addRoute (pS "hello") $ do
 
         msg <- getMessage
         name <- getName
@@ -35,6 +36,10 @@ routes = do
         respond $ "you said " <> msg
 
         return ()
+
+    addRoute (pS "remind me " <+> var (pUntil (pS " in ")) <+> pRest) $ \(reminder,_) -> do
+
+        respond $ "I will remind you " <> reminder <> " at some point!"
 
 --
 -- Run a message received through the routes.

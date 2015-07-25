@@ -57,11 +57,16 @@ runParsers p text fn = case run p (Just (text,fn)) of
     run :: Parsers p -> Maybe (T.Text, ParserVarFn p out) -> Maybe (T.Text, out) 
     run _ Nothing = Nothing
     run (PCons as bs) mTxtAndFn = run bs (run as mTxtAndFn)
-    run (PStatic a) (Just (txt,fn)) = case P.parse a txt of
+    run (PStatic a) (Just (txt,fn)) = noBind fn $ P.parse a txt
+    run (PVar a) (Just (txt,fn)) = bind fn $ P.parse a txt
+
+    noBind fn r = case r of
         P.Done nextText res -> Just (nextText, fn)
+        P.Partial res -> noBind fn (res "") 
         _ -> Nothing
-    run (PVar a) (Just (txt,fn)) = case P.parse a txt of
+    bind fn r = case r of
         P.Done nextText res -> Just (nextText, fn res)
+        P.Partial res -> bind fn (res "") 
         _ -> Nothing
 
 -- wrap converts a raw (P.Parser a) into a
