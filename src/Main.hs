@@ -1,7 +1,9 @@
 import Internal.Routing
-import Internal.Commands
 import Internal.WebSocket
 import Internal.Args
+import Internal.Types
+
+import Commands
 
 import           System.Environment  (getArgs)
 import qualified Data.Text           as T
@@ -14,7 +16,12 @@ import           Control.Monad       (mzero,guard)
 import qualified Control.Monad.State as S
 import           Control.Applicative ((<$>),(<*>),(<|>))
 
-
+--
+-- For each message that is received, attempt to
+-- parse it against each of these routes from top
+-- to bottom, and run the corresponding thing if
+-- parsing is successful.
+--
 routes :: Routes (RouteStateIO ())
 routes = do
 
@@ -41,6 +48,7 @@ callback MessageReceived{..} replyFn = do
             { rsMessage = rMessage
             , rsName    = rName
             , rsReplyFn = replyFn
+            , rsRoom    = rRoom
             }
 
     case runRoutes routes rMessage of
@@ -71,19 +79,4 @@ main = do
 
     startServer socketSettings 
 
---
--- this is what we expect incoming messages to look like.
--- they will be auto-parsed into this structure, and if
--- parsing fails we won't try to respond
---
-data MessageReceived = MessageReceived 
-    { rName :: T.Text
-    , rMessage :: T.Text
-    }
-
-instance FromJSON MessageReceived where
-    parseJSON (Object m) = MessageReceived
-                       <$> m .: "name"
-                       <*> m .: "message"
-    parseJSON _  = mzero
 

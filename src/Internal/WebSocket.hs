@@ -55,7 +55,7 @@ startServer ServerSettings{..} = do
     WS.runServer (T.unpack sAddress) sPort $ application sCallback sError
 
 application :: FromJSON res
-            => (res -> SocketReplyFn -> IO ())  -- callback, handed result from server
+            => (res -> SocketReplyFn -> IO ())  -- callback, handed result from server and fn to respond with
             -> (ServerError -> IO ())           -- an error callback
             -> WS.ServerApp                     -- the server app constructed
 application cb err pending = do
@@ -75,7 +75,8 @@ application cb err pending = do
             Just res -> void (forkIO $ cb res replyFn)
 
 -- The default error handler logs to stderr
--- the default logger logs to stdout.
+-- the default logger logs to stdout
+-- the default callback does nothing
 defaultErrorHandler :: ServerError -> IO ()
 defaultErrorHandler (ParseFailureError bs) = T.hPutStrLn IO.stderr $ "Error parsing from JSON: "<>T.decodeUtf8 (BL.toStrict bs)
 
@@ -83,6 +84,6 @@ defaultLogHandler :: T.Text -> IO ()
 defaultLogHandler str = T.hPutStrLn IO.stdout str
 
 defaultCallbackHandler :: a -> SocketReplyFn -> IO ()
-defaultCallbackHandler res replyFn = return () 
+defaultCallbackHandler _ _ = return () 
 
 type SocketReplyFn = forall out. ToJSON out => out -> IO ()
