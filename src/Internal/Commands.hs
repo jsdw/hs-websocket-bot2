@@ -1,52 +1,69 @@
-{-# LANGUAGE
-    PatternSynonyms, 
-    DeriveFunctor #-}
-
 module Internal.Commands (
 
-    -- types
-    Command,
-    Cmd(..),
+    -- locked down route state we'll use:
+    RouteState(..),
+    RouteStateIO,
+    doWithRouteState,
 
-    -- allow matching on free monad pieces
-    -- without having to expose them.
-    pattern Pure,
-    pattern Impure,
-
-    -- commands available to use:
-    message,
-    sleep
+    -- commands to work in route bits:
+    exit,
+    respond,
+    getMessage,
+    getName,
+    sleepMs
 
 ) where
 
-import qualified Control.Monad.Free as F
-import qualified Data.Text          as T
-import           Data.Monoid        ((<>))
+import Internal.WebSocket (SocketReplyFn)
+import Internal.Routing
 
-pattern Pure a = F.Pure a
-pattern Impure a = F.Impure a
-
---
--- First, add commands to command type.
---
-data Cmd next
-    = Message T.Text next
-    | Sleep Int next
-    | RandomInt (Int -> next)
-    | End
-    deriving Functor
-
-type Command = F.Free Cmd
+import           Control.Monad              (mzero, guard)
+import           Control.Monad.Trans        (lift)
+import           Control.Monad.State        (liftIO, void)
+import           Control.Concurrent         (threadDelay)
+import qualified Control.Monad.Trans.Maybe  as M
+import qualified Control.Monad.State        as S
+import qualified Data.Text                  as T
+import           Data.Aeson                 (ToJSON)
 
 --
--- Next, add a simpler interface to create them
--- prewrapped into a free monad:
+-- lock down the route output to this, so that we
+-- know what commands we'll be able to run in that
+-- context
 --
+data RouteState = RouteState
+    { rsMessage :: T.Text
+    , rsName    :: T.Text
+    , rsReplyFn :: SocketReplyFn
+    }
 
-message txt = liftF $ Message txt ()
-sleep val = liftF $ Sleep val ()
+type RouteStateIO = S.StateT RouteState (M.MaybeT IO)
 
+doWithRouteState :: RouteStateIO a -> RouteState -> IO ()
+doWithRouteState m rs = void $ M.runMaybeT (S.execStateT m rs)
 
--- Utility to wrap commands into free monad.
-liftF :: Cmd next -> Command next
-liftF cmd = F.Impure $ fmap F.Pure cmd
+-- stop computation:
+exit :: RouteStateIO ()
+exit = lift mzero
+
+-- respond to the socket:
+respond :: ToJSON out => out -> RouteStateIO ()
+respond out = do
+    state <- S.get
+    liftIO $ rsReplyFn state out
+
+-- get the full message:
+getMessage :: RouteStateIO T.Text
+getMessage = do
+    state <- S.get
+    return $ rsMessage state
+
+-- get the username of the sender:
+getName :: RouteStateIO T.Text
+getName = do
+    state <- S.get
+    return $ rsName state
+
+-- sleep for some number of ms:
+sleepMs :: Int -> RouteStateIO ()
+sleepMs num = liftIO $ threadDelay (num*1000)

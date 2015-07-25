@@ -1,29 +1,89 @@
-{-# LANGUAGE
-    OverloadedStrings,
-    DeriveFunctor #-}
-
 import Internal.Routing
 import Internal.Commands
 import Internal.WebSocket
+import Internal.Args
 
-import qualified Data.Text          as T
-import           Data.Monoid        ((<>))
+import           System.Environment  (getArgs)
+import qualified Data.Text           as T
+import           Data.Monoid         ((<>))
+import           Data.Default
+import           Data.Aeson
+import qualified Data.Map            as M
+import           Text.Read           (readMaybe)
+import           Control.Monad       (mzero,guard)
+import qualified Control.Monad.State as S
+import           Control.Applicative ((<$>),(<*>),(<|>))
+
+
+routes :: Routes (RouteStateIO ())
+routes = do
+
+    addRoute ("hello" :: String) $ do
+
+        msg <- getMessage
+        name <- getName
+
+        respond $ "hello " <> name
+        sleepMs 1000
+        respond $ "you said " <> msg
+
+        return ()
 
 --
--- Interpreters; to be moved to other file.
+-- Run a message received through the routes.
+-- matching route will return an IO () which
+-- we then run to perform some action.
 --
+callback :: MessageReceived -> SocketReplyFn -> IO ()
+callback MessageReceived{..} replyFn = do
 
--- print commands to string:
-toText :: Show n => Command n -> T.Text
-toText (Pure res) = "Return: " <> (showT res) <> "\n"
-toText (Impure m) = t m
-  where
-    t (Message txt next) = "Message: " <> txt <> "\n" <> (toText next)
-    t (Sleep int next) = "Sleep for " <> (showT int) <> "ms\n" <> (toText next)
-    t _ = "Unknown command :("
+    let rs = RouteState
+            { rsMessage = rMessage
+            , rsName    = rName
+            , rsReplyFn = replyFn
+            }
 
+    case runRoutes routes rMessage of
+        Just m -> doWithRouteState m rs
+        Nothing -> return () 
 
-toString cmd = T.unpack (toText cmd)
+--
+-- Kick off a socket server using our wrapper. pass
+-- in the above callback which handles what to do
+-- when a valid message is received
+--
+main :: IO ()
+main = do 
 
-showT :: Show a => a -> T.Text
-showT = T.pack . show
+    args <- fmap parseKeys getArgs
+
+    --parse port number and address from args:
+    let (Just address) = M.lookup "address" args <|> M.lookup "a" args <|> Just "0.0.0.0"
+        (Just port) = (maybeP >>= readMaybe :: Maybe Int) <|> Just 9090
+           where maybeP = M.lookup "port" args <|> M.lookup "p" args
+
+    --begin socket server with these settings:
+    let socketSettings = (def :: ServerSettings MessageReceived)
+          { sAddress = T.pack address
+          , sPort = port
+          , sCallback = callback
+          }
+
+    startServer socketSettings 
+
+--
+-- this is what we expect incoming messages to look like.
+-- they will be auto-parsed into this structure, and if
+-- parsing fails we won't try to respond
+--
+data MessageReceived = MessageReceived 
+    { rName :: T.Text
+    , rMessage :: T.Text
+    }
+
+instance FromJSON MessageReceived where
+    parseJSON (Object m) = MessageReceived
+                       <$> m .: "name"
+                       <*> m .: "message"
+    parseJSON _  = mzero
+

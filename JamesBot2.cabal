@@ -18,8 +18,12 @@ executable JamesBot
   main-is:             Main.hs
   default-extensions:  FlexibleInstances,
                        OverloadedStrings,
+                       RecordWildCards,
+                       ViewPatterns,
                        RankNTypes
   build-depends:       base >=4.8 && < 4.9,
+                       containers >= 0.5.6.2 && < 0.6,
+                       transformers >= 0.4.3 && < 0.5,
                        mtl >= 2.2.1 && < 2.3,
                        data-default >= 0.5.3 && < 0.6,
                        text >=1.2 && < 1.3,
