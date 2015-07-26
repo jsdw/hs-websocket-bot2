@@ -26,20 +26,19 @@ import           Control.Applicative ((<$>),(<*>),(<|>))
 routes :: Routes (RouteStateIO ())
 routes = do
 
-    addRoute (pS "hello") $ do
+    -- BOTNAME remind me REMINDER in TIME_FROM_NOW
+    addRoute 
+      ( pBotName <+> pS " remind me " <+> var (pUntil (pS " in ")) <+> var pFromNow <+> pRest )
+      $ \(reminder,_) msFromNow -> do
 
-        msg <- getMessage
+        --calculate date in msFromNow
+        time <- getTime
+        let futureTime = time `addMs` msFromNow
+
         name <- getName
-
-        respond $ "hello " <> name
-        sleepMs 1000
-        respond $ "you said " <> msg
-
-        return ()
-
-    addRoute (pS "remind me " <+> var (pUntil (pS " in ")) <+> pRest) $ \(reminder,_) -> do
-
-        respond $ "I will remind you " <> reminder <> " at some point!"
+        respond $ "I will remind you " <> reminder <> " at " <> formatTime "%c" futureTime
+        sleepMs msFromNow
+        respondWithColour Red $ name <> " remember " <> reminder
 
 --
 -- Run a message received through the routes.
@@ -50,11 +49,11 @@ callback :: MessageReceived -> SocketReplyFn -> IO ()
 callback MessageReceived{..} replyFn = do
 
     let rs = RouteState
-            { rsMessage = rMessage
-            , rsName    = rName
-            , rsReplyFn = replyFn
-            , rsRoom    = rRoom
-            }
+           { rsMessage = rMessage
+           , rsName    = rName
+           , rsReplyFn = replyFn
+           , rsRoom    = rRoom
+           }
 
     case runRoutes routes rMessage of
         Just m -> doWithRouteState m rs

@@ -14,7 +14,8 @@ import qualified Control.Monad.State        as S
 import qualified Data.Text                  as T
 import           Data.Aeson                 (ToJSON)
 import           Data.Default               (def)
-
+import qualified Data.Time                  as Time
+import           Data.Time.Format           (defaultTimeLocale)
 
 -- stop computation:
 exit :: RouteStateIO ()
@@ -54,3 +55,15 @@ getName = do
 -- sleep for some number of ms:
 sleepMs :: Int -> RouteStateIO ()
 sleepMs num = liftIO $ threadDelay (num*1000)
+
+getTime :: RouteStateIO Time.ZonedTime
+getTime = liftIO $ Time.getZonedTime
+
+addMs :: Integral n => Time.ZonedTime -> n -> Time.ZonedTime
+addMs time ms = Time.utcToZonedTime tz newUtcTime
+  where utcTime = Time.zonedTimeToUTC time
+        tz = Time.zonedTimeZone time
+        newUtcTime = Time.addUTCTime ((fromIntegral ms) / 1000) utcTime
+
+formatTime :: Time.FormatTime t => String -> t -> T.Text
+formatTime s t = T.pack $ Time.formatTime defaultTimeLocale s t
