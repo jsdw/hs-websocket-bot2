@@ -71,6 +71,22 @@ pFromNow = do
 
     return $ round (num * mult)
 
+-- parse common greetings
+pGreetings :: Parser T.Text
+pGreetings = pIS "hello"
+         <|> pIS "hi"
+         <|> pIS "hiya"
+         <|> pIS "hey"
+         <|> pIS "howdy"
+         <|> pIS "good morning"
+         <|> pIS "good moro"
+         <|> pIS "good day"
+         <|> pIS "greetings"
+         <|> pIS "what ho"
+         <|> pIS "yo"
+         <|> pIS "wassup"
+         <|> pIS "whats up"
+
 -- parse string, case insensitive
 pIS :: T.Text -> Parser T.Text
 pIS t = loop t "" 
@@ -80,7 +96,7 @@ pIS t = loop t ""
         let ll = toLower $ T.head cur
             ul = toUpper ll
         o <- char ll <|> char ul
-        loop (T.tail cur) (out<> T.pack [o])
+        loop (T.tail cur) (out <> T.pack [o])
 
 -- parse string
 pS :: T.Text -> Parser T.Text
