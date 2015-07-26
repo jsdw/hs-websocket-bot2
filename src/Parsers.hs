@@ -50,7 +50,7 @@ pFromNow = do
         days        = 24 * hours
         weeks       = 7  * days
         months      = 4.33 * weeks
-        years       = 365 * days
+        years       = 365.242 * days
         decades     = 10 * years
         eons        = 1000 * years
 
