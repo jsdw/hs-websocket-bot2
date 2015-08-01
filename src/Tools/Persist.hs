@@ -33,10 +33,6 @@ persistMVar :: (MonadIO m, Eq v, ToJSON v, FromJSON v) => PersistOpts -> MVar v 
 persistMVar PersistOpts{..} mv = liftIO $ do
 
     -- load in file contents initially if asked to (and possible to):
-    let doesNotExist e
-          | isDoesNotExistError e = return ()
-          | otherwise = throwIO e
-
     if poOnStartup
         then tryInitialRead poFilename mv `catch` doesNotExist
         else return ()
@@ -47,6 +43,9 @@ persistMVar PersistOpts{..} mv = liftIO $ do
         Nothing -> return ()
 
   where
+    doesNotExist e
+        | isDoesNotExistError e = return ()
+        | otherwise = throwIO e
     tryInitialRead name mv = do
         file <- BL.readFile name
         case decode file of
