@@ -3,6 +3,8 @@ import Internal.WebSocket
 import Internal.Args
 import Internal.Types
 
+import Tools.Persist
+
 import Commands
 import Parsers
 
@@ -27,7 +29,7 @@ routes :: Routes (RouteStateIO ())
 routes = do
 
     -- BOTNAME remind me REMINDER in TIME_FROM_NOW
-    addRoute 
+    addRoute
       ( pBotName <+> pS " remind me " <+> var (pUntil (pS " in ")) <+> var pFromNow <+> pRest )
       $ \(reminder,_) msFromNow -> do
 
@@ -91,7 +93,7 @@ callback MessageReceived{..} replyFn = do
 
     case runRoutes routes routesInput of
         Just m -> doWithRouteState m rs
-        Nothing -> return () 
+        Nothing -> return ()
 
 --
 -- Kick off a socket server using our wrapper. pass
@@ -99,7 +101,7 @@ callback MessageReceived{..} replyFn = do
 -- when a valid message is received
 --
 main :: IO ()
-main = do 
+main = do
 
     args <- fmap parseKeys getArgs
 
@@ -115,6 +117,8 @@ main = do
           , sCallback = callback
           }
 
-    startServer socketSettings 
+    startServer socketSettings
+
+
 
 

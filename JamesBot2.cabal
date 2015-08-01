@@ -2,16 +2,16 @@
 name:                JamesBot2
 version:             0.1.0.0
 synopsis:            A chat bot
--- description:         
+-- description:
 homepage:            unbui.lt
--- license:             
+-- license:
 license-file:        LICENSE
 author:              James Wilson
 maintainer:          me@unbui.lt
--- copyright:           
+-- copyright:
 category:            Web
 build-type:          Simple
--- extra-source-files:  
+-- extra-source-files:
 cabal-version:       >=1.10
 
 executable JamesBot
