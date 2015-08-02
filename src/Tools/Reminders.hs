@@ -5,6 +5,7 @@ module Tools.Reminders (
     ReminderInterval(..),
     Reminder(..),
     ReminderOpts(..),
+    Reminders,
 
     mkDefaultReminderOpts,
     loadReminders,
@@ -44,16 +45,16 @@ data ReminderInterval
 instance ToJSON ReminderInterval
 instance FromJSON ReminderInterval
 
-data Reminder = Reminder
-    { reminderText :: T.Text
+data Reminder rem = Reminder
+    { reminderText :: rem
     , reminderInterval :: ReminderInterval
     , reminderTimes :: [UTCTime]
     } deriving (Show, Eq, Generic)
 
-instance ToJSON Reminder
-instance FromJSON Reminder
+instance ToJSON rem => ToJSON (Reminder rem)
+instance FromJSON rem => FromJSON (Reminder rem)
 
-instance Ord Reminder where
+instance Eq rem => Ord (Reminder rem) where
     compare Reminder{ reminderTimes = (t1:_) } Reminder{ reminderTimes = (t2:_) } = compare t1 t2
 
 data ReminderOpts = ReminderOpts
@@ -70,7 +71,7 @@ mkDefaultReminderOpts name = ReminderOpts
 -- the persistance and handles firing and removing reminders as
 -- they occur
 --
-loadReminders :: MonadIO m => ReminderOpts -> m Reminders
+loadReminders :: (Eq rem, ToJSON rem, FromJSON rem) => MonadIO m => ReminderOpts -> m (Reminders rem)
 loadReminders ReminderOpts{..} = liftIO $ do
 
     -- create reminders:
@@ -92,7 +93,7 @@ loadReminders ReminderOpts{..} = liftIO $ do
     -- spins up threads for any reminders approaching
     -- being done (or done already!) which sleep the remainder
     -- of the time and then call the subscribed things
-    manager :: Reminders -> IO ()
+    manager :: Reminders rem -> IO ()
     manager Reminders{..} = do
 
         callbacks <- readMVar subscribed
@@ -108,8 +109,8 @@ loadReminders ReminderOpts{..} = liftIO $ do
 
     -- update reminder map
     updateReminderMap :: UTCTime ->
-                         M.Map ReminderPerson [Reminder] ->
-                         ([(ReminderPerson, T.Text, NominalDiffTime)], M.Map ReminderPerson [Reminder])
+                         M.Map ReminderPerson [Reminder rem] ->
+                         ([(ReminderPerson, rem, NominalDiffTime)], M.Map ReminderPerson [Reminder rem])
     updateReminderMap tNow rmap = M.foldlWithKey' fn ([], M.empty) rmap
       where
         fn (outinfo,rmap) name rs =
@@ -119,8 +120,8 @@ loadReminders ReminderOpts{..} = liftIO $ do
     -- update list of reminders, accumulating (name,text,time) along the way
     updateReminders :: UTCTime ->
                        ReminderPerson ->
-                       [Reminder] ->
-                       ([(ReminderPerson, T.Text, NominalDiffTime)], [Reminder])
+                       [Reminder rem] ->
+                       ([(ReminderPerson, rem, NominalDiffTime)], [Reminder rem])
     updateReminders tNow name rs = foldr fn ([],[]) rs
       where
         fn r (outinfo,outrs) = (newoutinfo, newoutrs)
@@ -134,7 +135,7 @@ loadReminders ReminderOpts{..} = liftIO $ do
                 Just rem -> rem:outrs
 
     -- remove closest time if necessaary
-    updateReminder :: UTCTime -> Reminder -> (Maybe NominalDiffTime, Maybe Reminder)
+    updateReminder :: UTCTime -> Reminder rem -> (Maybe NominalDiffTime, Maybe (Reminder rem))
     updateReminder now r@Reminder{ reminderTimes = (t:ts) } =
         let dt = diffUTCTime t now in
         if dt < 5
@@ -142,7 +143,7 @@ loadReminders ReminderOpts{..} = liftIO $ do
             else (Nothing, Just r)
 
     -- create an IO action which fires all callbacks:
-    fireCallbacks :: [ReminderPerson -> T.Text -> IO ()] -> [(ReminderPerson, T.Text, NominalDiffTime)] -> IO ()
+    fireCallbacks :: [ReminderPerson -> rem -> IO ()] -> [(ReminderPerson, rem, NominalDiffTime)] -> IO ()
     fireCallbacks cbs ms = sequence_ $ foldl' resolvecbs [] ms
         where
           resolvecbs as (name,txt,dt) =
@@ -157,12 +158,12 @@ loadReminders ReminderOpts{..} = liftIO $ do
 -- Add a reminder to the list with a given time, interval, message and
 -- person to remind. sorted by next reminder time, nearer = first
 --
-addReminder :: MonadIO m        =>
-               Reminders        -> -- opaque reminders object
-               ReminderPerson   -> -- person to remind
-               T.Text           -> -- reminder message
-               ReminderInterval -> -- how often to remind
-               UTCTime          -> -- when to remind
+addReminder :: (Eq rem, MonadIO m) =>
+               Reminders rem       -> -- opaque reminders object (rem is reminder data)
+               ReminderPerson      -> -- person to remind
+               rem                 -> -- reminder text (or other data)
+               ReminderInterval    -> -- how often to remind
+               UTCTime             -> -- when to remind
                m ()
 addReminder Reminders{..} name txt i time = liftIO $ modifyMVar_ reminders $ \rmap ->
     let rs = M.findWithDefault [] name rmap
@@ -186,13 +187,13 @@ addReminder Reminders{..} name txt i time = liftIO $ modifyMVar_ reminders $ \rm
 -- Get reminders for someone as a list. empty if no reminders exist. sorted
 -- by time, nearest first.
 --
-getReminders :: MonadIO m => Reminders -> ReminderPerson -> m [Reminder]
+getReminders :: MonadIO m => Reminders rem -> ReminderPerson -> m [Reminder rem]
 getReminders Reminders{..} name = liftIO $ M.findWithDefault [] name <$> readMVar reminders
 
 --
 -- Remove a reminder for someone based on its position in the list.
 --
-removeReminder :: MonadIO m => Reminders -> ReminderPerson -> Integer -> m ()
+removeReminder :: MonadIO m => Reminders rem -> ReminderPerson -> Integer -> m ()
 removeReminder Reminders{..} name n = liftIO $ modifyMVar_ reminders $ \rmap ->
     let rs = M.findWithDefault [] name rmap
         newrs = foldr (\(n',r) b -> if n' /= n then r:b else b) [] (L.zip [1..] rs)
@@ -202,19 +203,19 @@ removeReminder Reminders{..} name n = liftIO $ modifyMVar_ reminders $ \rmap ->
 --
 -- Subscribe to being handed reminders when they occur
 --
-onReminder :: MonadIO m => Reminders -> (ReminderPerson -> T.Text -> IO ()) -> m ()
+onReminder :: MonadIO m => Reminders rem -> (ReminderPerson -> rem -> IO ()) -> m ()
 onReminder Reminders{..} fn = liftIO $ modifyMVar_ subscribed $ \cs -> return (fn:cs)
 
 
 
--- =======================
--- | Don't export this. |
--- =======================
+-- =======================================
+-- | Don't export constructors for this. |
+-- =======================================
 --
 -- Provide funcs to create/work with it above.
 --
 
-data Reminders = Reminders
-    { reminders :: MVar (M.Map ReminderPerson [Reminder]) -- map of name to reminder list
-    , subscribed :: MVar [ ReminderPerson -> T.Text -> IO () ]
+data Reminders rem = Reminders
+    { reminders :: MVar (M.Map ReminderPerson [Reminder rem]) -- map of name to reminder list
+    , subscribed :: MVar [ ReminderPerson -> rem -> IO () ]
     }

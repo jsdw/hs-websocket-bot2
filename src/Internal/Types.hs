@@ -12,6 +12,8 @@ module Internal.Types (
 
 ) where
 
+import           Tools.Reminders            (Reminders)
+
 import qualified Data.Text                  as T
 import           Data.Aeson
 import           Data.Default
@@ -19,7 +21,6 @@ import           Control.Monad              (mzero, void)
 import           Control.Concurrent         (threadDelay)
 import qualified Control.Monad.Trans.Maybe  as M
 import qualified Control.Monad.State        as S
-import           Internal.WebSocket (SocketReplyFn)
 
 --
 -- this is what we expect incoming messages to look like.
@@ -63,6 +64,13 @@ instance ToJSON MessageResponse where
         , "room"    .= r
         ]
 
+instance FromJSON MessageResponse where
+    parseJSON (Object m) = MessageResponse
+                       <$> m .: "message"
+                       <*> m .: "colour"
+                       <*> m .: "room"
+    parseJSON _  = mzero
+
 data MessageColour = Yellow | Green | Red | Purple | Grey | Random
     deriving (Show,Eq)
 
@@ -74,6 +82,16 @@ instance ToJSON MessageColour where
     toJSON Grey   = String "grey"
     toJSON Random = String "random"
 
+instance FromJSON MessageColour where
+    parseJSON (String c) = return $ col c
+      where
+        col "yellow" = Yellow
+        col "green"  = Green
+        col "red"    = Red
+        col "purple" = Purple
+        col "grey"   = Grey
+        col _        = Random
+
 --
 -- lock down the route output to this, so that we
 -- know what commands we'll be able to run in that
@@ -83,7 +101,8 @@ data RouteState = RouteState
     { rsMessage :: T.Text
     , rsName    :: T.Text
     , rsRoom    :: Maybe T.Text
-    , rsReplyFn :: SocketReplyFn
+    , rsReplyFn :: (MessageResponse -> IO ())
+    , rsReminders :: Reminders MessageResponse
     }
 
 type RouteStateIO = S.StateT RouteState (M.MaybeT IO)

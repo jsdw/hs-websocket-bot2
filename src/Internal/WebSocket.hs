@@ -2,10 +2,11 @@ module Internal.WebSocket (
 
     ServerSettings(..),
     ServerError(..),
-    SocketReplyFn,
     startServer
 
-) where 
+) where
+
+import           Internal.Channel
 
 import           Data.Aeson                 (FromJSON,ToJSON)
 import qualified Data.Aeson                 as JSON
@@ -21,21 +22,19 @@ import qualified System.IO                  as IO
 import           Control.Monad
 import           Control.Concurrent
 
-data FromJSON res => ServerSettings res = ServerSettings 
+data ServerSettings = ServerSettings
     { sAddress :: T.Text
     , sPort :: Int
-    , sCallback :: res -> SocketReplyFn -> IO ()
     , sError :: ServerError -> IO ()
     , sLogger :: T.Text -> IO ()
     }
 
 data ServerError = ParseFailureError BL.ByteString
 
-instance FromJSON res => Default (ServerSettings res) where
+instance Default ServerSettings where
     def = ServerSettings
         { sAddress = "0.0.0.0"
         , sPort = 9090
-        , sCallback = defaultCallbackHandler
         , sError = defaultErrorHandler
         , sLogger = defaultLogHandler
         }
@@ -44,7 +43,7 @@ instance FromJSON res => Default (ServerSettings res) where
 -- settings and it'll run a server and fire the relevant
 -- callback with pre-decoded json where necessary, or
 -- error cb if something goes wrong.
-startServer :: FromJSON res => ServerSettings res -> IO ()
+startServer :: (ToJSON b, FromJSON a) => ServerSettings -> IO (IO a, b -> IO ())
 startServer ServerSettings{..} = do
 
     sLogger $ "Starting server"
@@ -52,19 +51,24 @@ startServer ServerSettings{..} = do
     sLogger $ "Port:    " <> T.pack (show sPort)
     sLogger $ "Address: " <> sAddress
 
-    WS.runServer (T.unpack sAddress) sPort $ application sCallback sError
+    (in_read, in_write) <- makeChan
+    (out_read, out_write) <- makeChan
 
-application :: FromJSON res
-            => (res -> SocketReplyFn -> IO ())  -- callback, handed result from server and fn to respond with
+    forkIO $ WS.runServer (T.unpack sAddress) sPort $ application (in_read, out_write) sError
+    return (out_read, in_write)
+
+application :: (FromJSON b, ToJSON a)
+            => (IO a, b -> IO ())
             -> (ServerError -> IO ())           -- an error callback
             -> WS.ServerApp                     -- the server app constructed
-application cb err pending = do
+application (read,write) err pending = do
 
     conn <- WS.acceptRequest pending
     WS.forkPingThread conn 30
 
-    let replyFn :: SocketReplyFn
-        replyFn = WS.sendTextData conn . JSON.encode
+    forkIO $ forever $ do
+        msg <- read
+        WS.sendTextData conn $ JSON.encode msg
 
     forever $ do
         msg <- WS.receiveData conn :: IO BL.ByteString
@@ -72,7 +76,7 @@ application cb err pending = do
 
         case mRes of
             Nothing -> err (ParseFailureError msg)
-            Just res -> void (forkIO $ cb res replyFn)
+            Just res -> write res
 
 -- The default error handler logs to stderr
 -- the default logger logs to stdout
@@ -82,8 +86,3 @@ defaultErrorHandler (ParseFailureError bs) = T.hPutStrLn IO.stderr $ "Error pars
 
 defaultLogHandler :: T.Text -> IO ()
 defaultLogHandler str = T.hPutStrLn IO.stdout str
-
-defaultCallbackHandler :: a -> SocketReplyFn -> IO ()
-defaultCallbackHandler _ _ = return () 
-
-type SocketReplyFn = forall out. ToJSON out => out -> IO ()

@@ -5,7 +5,9 @@ module Commands (
 
 import Internal.Routing
 import Internal.Types
+import Tools.Reminders
 
+import           Control.Applicative
 import           Control.Monad              (mzero, guard, void)
 import           Control.Monad.Trans        (lift, MonadIO, liftIO)
 import           Control.Concurrent         (threadDelay)
@@ -24,7 +26,7 @@ respond :: T.Text -> RouteStateIO ()
 respond out = do
     state <- S.get
     liftIO $ rsReplyFn state $ def
-        { resMessage = out 
+        { resMessage = out
         , resRoom = rsRoom state
         }
 
@@ -47,33 +49,26 @@ respondSlowlyWithColour col t = do
     sleepMs $ (T.length t) * 110
     respondWithColour col t
 
+-- get reminders object:
+askReminders :: RouteStateIO (Reminders MessageResponse)
+askReminders = rsReminders <$> S.get
+
 -- get the full message:
-getMessage :: RouteStateIO T.Text
-getMessage = do
-    state <- S.get
-    return $ rsMessage state
+askMessage :: RouteStateIO T.Text
+askMessage = rsMessage <$> S.get
 
 -- get the username of the sender:
-getName :: RouteStateIO T.Text
-getName = do
-    state <- S.get
-    return $ rsName state
+askName :: RouteStateIO T.Text
+askName = rsName <$> S.get
+
+-- get the room of the sender:
+askRoom :: RouteStateIO (Maybe T.Text)
+askRoom = rsRoom <$> S.get
+
 
 -- sleep for some number of ms:
 sleepMs :: MonadIO m => Int -> m ()
 sleepMs num = liftIO $ threadDelay (num*1000)
-
-getTime :: MonadIO m => m Time.ZonedTime
-getTime = liftIO $ Time.getZonedTime
-
-addMs :: Integral n => Time.ZonedTime -> n -> Time.ZonedTime
-addMs time ms = Time.utcToZonedTime tz newUtcTime
-  where utcTime = Time.zonedTimeToUTC time
-        tz = Time.zonedTimeZone time
-        newUtcTime = Time.addUTCTime ((fromIntegral ms) / 1000) utcTime
-
-formatTime :: Time.FormatTime t => String -> t -> T.Text
-formatTime s t = T.pack $ Time.formatTime defaultTimeLocale s t
 
 random :: (MonadIO m, Random a) => m a
 random = liftIO $ randomIO
