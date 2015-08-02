@@ -26,7 +26,7 @@ import           Internal.WebSocket (SocketReplyFn)
 -- they will be auto-parsed into this structure, and if
 -- parsing fails we won't try to respond
 --
-data MessageReceived = MessageReceived 
+data MessageReceived = MessageReceived
     { rName :: T.Text
     , rMessage :: T.Text
     , rRoom :: Maybe T.Text
@@ -57,7 +57,7 @@ instance Default MessageResponse where
         }
 
 instance ToJSON MessageResponse where
-    toJSON (MessageResponse m c r) = object 
+    toJSON (MessageResponse m c r) = object
         [ "message" .= m
         , "colour"  .= c
         , "room"    .= r
