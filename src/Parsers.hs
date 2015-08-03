@@ -36,6 +36,9 @@ pUntil parser = loop parser ""
 pRest :: Parser T.Text
 pRest = fmap T.pack (many' anyChar)
 
+pDecimal :: Integral a => Parser a
+pDecimal = decimal
+
 -- parse a relative time into miliseconds
 pFromNow :: Parser Int
 pFromNow = do
@@ -89,7 +92,7 @@ pGreetings = pIS "hello"
 
 -- parse string, case insensitive
 pIS :: T.Text -> Parser T.Text
-pIS t = loop t "" 
+pIS t = loop t ""
   where
     loop ""  out = return out
     loop cur out = do

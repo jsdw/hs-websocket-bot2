@@ -21,6 +21,7 @@ import           Control.Monad.Trans
 import qualified Control.Monad.State as S
 import           Control.Applicative ((<$>),(<*>),(<|>))
 import           Data.Time
+import           Data.Foldable
 
 --
 -- For each message that is received, attempt to
@@ -52,6 +53,30 @@ routes = do
         respond $ name <> " reminder set."
         addReminder reminders name resp Once futureTime
 
+
+    addRoute
+      ( pBotName <+> pS " show reminders" <+> pRest )
+      $ do
+
+        name        <- askName
+        reminders   <- askReminders
+        myReminders <- getReminders reminders name
+
+        let reminderStr = foldl' foldfn "" (zip [1..] myReminders)
+            foldfn txt (i, Reminder{ reminderText = MessageResponse{..} }) =
+                txt <> "(" <> (T.pack (show i)) <> ") remember " <> resMessage <> "\r\n"
+
+        respond reminderStr
+
+    addRoute
+      ( pBotName <+> pS " remove reminder " <+> var pDecimal )
+      $ \n -> do
+
+        name        <- askName
+        reminders   <- askReminders
+
+        removeReminder reminders name n
+        respond $ name <> " reminder " <> (T.pack $ show n) <> " removed."
 
     -- a reminders reminder
     addRoute
