@@ -1,4 +1,4 @@
-{-# LANGUAGE 
+{-# LANGUAGE
     DataKinds,
     TypeFamilies,
     KindSignatures,
@@ -50,11 +50,11 @@ type family ParserVarFn (a :: ParserTy *) out where
 runParsers :: Parsers p -> T.Text -> ParserVarFn p out -> Maybe out
 runParsers p text fn = case run p (Just (text,fn)) of
     Just (rem,out) -> if T.length rem > 0
-                      then Nothing 
+                      then Nothing
                       else Just out
     Nothing -> Nothing
   where
-    run :: Parsers p -> Maybe (T.Text, ParserVarFn p out) -> Maybe (T.Text, out) 
+    run :: Parsers p -> Maybe (T.Text, ParserVarFn p out) -> Maybe (T.Text, out)
     run _ Nothing = Nothing
     run (PCons as bs) mTxtAndFn = run bs (run as mTxtAndFn)
     run (PStatic a) (Just (txt,fn)) = noBind fn $ P.parse a txt
@@ -62,11 +62,11 @@ runParsers p text fn = case run p (Just (text,fn)) of
 
     noBind fn r = case r of
         P.Done nextText res -> Just (nextText, fn)
-        P.Partial res -> noBind fn (res "") 
+        P.Partial res -> noBind fn (res "")
         _ -> Nothing
     bind fn r = case r of
         P.Done nextText res -> Just (nextText, fn res)
-        P.Partial res -> bind fn (res "") 
+        P.Partial res -> bind fn (res "")
         _ -> Nothing
 
 -- wrap converts a raw (P.Parser a) into a

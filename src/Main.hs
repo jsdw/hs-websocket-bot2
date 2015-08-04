@@ -34,7 +34,7 @@ routes = do
 
     -- BOTNAME remind me REMINDER in TIME_FROM_NOW
     addRoute
-      ( pBotName <+> pS " remind me " <+> var (pUntil (pS " in ")) <+> var pFromNow <+> pRest )
+      ( pBotName <..> pS "remind me" <..> var (pUntil (pS " in")) <..> var pFromNow <+> pRest )
       $ \(reminder,_) msFromNow -> do
 
         time <- liftIO $ getCurrentTime
@@ -55,7 +55,7 @@ routes = do
 
 
     addRoute
-      ( pBotName <+> pS " show reminders" <+> pRest )
+      ( pBotName <..> pS "show reminders" <+> pRest )
       $ do
 
         name        <- askName
@@ -69,7 +69,7 @@ routes = do
         respond reminderStr
 
     addRoute
-      ( pBotName <+> pS " remove reminder " <+> var pDecimal )
+      ( pBotName <..> pS "remove reminder" <..> var pDecimal )
       $ \n -> do
 
         name        <- askName
@@ -80,13 +80,13 @@ routes = do
 
     -- a reminders reminder
     addRoute
-      ( pBotName <+> pS " remind" <+> pRest )
+      ( pBotName <..> pS "remind" <+> pRest )
       $ respond "Want a reminder? remind me REMINDER in NUMBER UNIT"
 
 
     -- greetings!
     addRoute
-      ( var pGreetings <+> pUntil pBotName <+> pRest )
+      ( var pGreetings <..> pUntil pBotName <+> pRest )
       $ \greeting -> do
 
         name <- askName
@@ -102,7 +102,7 @@ routes = do
     -- Random responses to messages containing BOTNAME:
     --
 
-    addMaybeRoute (1/100) (pUntil pBotName <+> pRest)
+    addMaybeRoute (1/100) (pUntil pBotName <..> pRest)
       $ do
         name <- askName
         respondSlowly $ name <> " that accent isn't even slightly convincing."

@@ -42,7 +42,7 @@ mkRoutesInput msg = do
     return RoutesInput
         { routesMessage = msg
         , routesRandom  = randomRs (0,1) randomGen
-        , routesTime    = time 
+        , routesTime    = time
         }
 
 

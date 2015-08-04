@@ -5,6 +5,8 @@ module Parsers (
     module Parsers
 ) where
 
+import Internal.Routing
+
 import           Prelude              hiding (take)
 import           Data.Attoparsec.Text
 import qualified Data.Text            as T
@@ -104,3 +106,7 @@ pIS t = loop t ""
 -- parse string
 pS :: T.Text -> Parser T.Text
 pS = string
+
+-- auto-add mandatory separator characters between entries.
+infixl 6 <..>
+(<..>) p1 p2 = p1 <+> many1 space <+> p2
