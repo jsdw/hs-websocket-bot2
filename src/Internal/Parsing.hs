@@ -88,6 +88,9 @@ instance WrapParser String where
     type ResParserTy String = PS T.Text
     wrap str = PStatic (P.string $ T.pack str)
 
+instance WrapParser Char where
+    type ResParserTy Char = PS Char
+    wrap c = PStatic (P.char c)
 
 -- create a nice syntax for defining Parsers,
 -- basically a wrapper for PCons/PStatic/PVar

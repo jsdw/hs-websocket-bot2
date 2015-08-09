@@ -34,11 +34,11 @@ routes = do
 
     -- BOTNAME remind me REMINDER in TIME_FROM_NOW
     addRoute
-      ( pBotName <..> pS "remind me" <..> var (pUntil (pS " in")) <..> var pFromNow <+> pRest )
-      $ \(reminder,_) msFromNow -> do
+      ( pBotName <..> pS "remind me" <..> var (pUntil (pS " in")) <..> var pRelativeTime <+> pRest )
+      $ \(reminder,_) relativeTime -> do
 
         time <- liftIO $ getCurrentTime
-        let futureTime = (fromIntegral msFromNow/1000) `addUTCTime` time
+        let futureTime = relativeTime `addRelativeToUTC` time
 
         name      <- askName
         room      <- askRoom
@@ -53,7 +53,6 @@ routes = do
         respond $ name <> " reminder set."
         addReminder reminders name resp Once futureTime
 
-
     addRoute
       ( pBotName <..> pS "show reminders" <+> pRest )
       $ do
@@ -61,12 +60,17 @@ routes = do
         name        <- askName
         reminders   <- askReminders
         myReminders <- getReminders reminders name
+        tz          <- liftIO $ getCurrentTimeZone
 
-        let reminderStr = foldl' foldfn "" (zip [1..] myReminders)
-            foldfn txt (i, Reminder{ reminderText = MessageResponse{..} }) =
-                txt <> "(" <> (T.pack (show i)) <> ") remember " <> resMessage <> "\r\n"
+        let formattedTime t = T.pack $ formatTime defaultTimeLocale "%H:%M %d/%m/%Y" (utcToLocalTime tz t)
+            reminderStr = foldl' foldfn "" (zip [1..] myReminders)
+            foldfn txt (i, Reminder{ reminderText = MessageResponse{..}, reminderTimes = (t:_) }) =
+                txt <> "(" <> (T.pack (show i)) <> ") remember " <> resMessage
+                    <> " (next is " <> formattedTime t <> ")\r\n"
 
-        respond reminderStr
+        if length myReminders == 0
+            then respond $ name <> " you have no reminders"
+            else respond reminderStr
 
     addRoute
       ( pBotName <..> pS "remove reminder" <..> var pDecimal )
@@ -83,6 +87,10 @@ routes = do
       ( pBotName <..> pS "remind" <+> pRest )
       $ respond "Want a reminder? remind me REMINDER in NUMBER UNIT"
 
+    -- say something!
+    addRoute
+        ( pBotName <..> var (pBool $ pS "slowly") <..> pS "say" <..> var (pMaybe $ pS "(" *> pWord <* pS ")" ) <..> var pRest )
+        $ \beSlow mRoom message -> respondWith def{ roSlow = beSlow, roRoom = mRoom } message
 
     -- greetings!
     addRoute
@@ -96,7 +104,7 @@ routes = do
               "good day" -> "A fine day to you kind " <> name
               _          -> "Hello there " <> name
 
-        respondSlowly res
+        respondWith def{roSlow = True} res
 
     --
     -- Random responses to messages containing BOTNAME:
@@ -105,7 +113,7 @@ routes = do
     addMaybeRoute (1/100) (pUntil pBotName <..> pRest)
       $ do
         name <- askName
-        respondSlowly $ name <> " that accent isn't even slightly convincing."
+        respondWith def{roSlow = True} $ name <> " you have something on your face."
 
 
 --

@@ -5,6 +5,7 @@ module Commands (
 
 import Internal.Routing
 import Internal.Types
+import Parsers          (RelativeTime(..))
 import Tools.Reminders
 
 import           Control.Applicative
@@ -14,13 +15,31 @@ import           Control.Concurrent         (threadDelay)
 import qualified Control.Monad.State        as S
 import qualified Data.Text                  as T
 import           Data.Aeson                 (ToJSON)
-import           Data.Default               (def)
+import           Data.Default
 import qualified Data.Time                  as Time
 import           Data.Time.Format           (defaultTimeLocale)
 import           System.Random              (Random, randomRIO, randomIO)
 
 exit :: RouteStateIO ()
 exit = lift mzero
+
+data ResponseOpts = ResponseOpts
+    { roRoom   :: Maybe T.Text
+    , roColour :: Maybe MessageColour
+    , roSlow   :: Bool
+    }
+instance Default ResponseOpts where
+    def = ResponseOpts def def False
+
+respondWith :: ResponseOpts -> T.Text -> RouteStateIO ()
+respondWith ResponseOpts{..} txt = do
+    state <- S.get
+    if roSlow then sleepMs $ (T.length txt) * 110 else return ()
+    liftIO $ rsReplyFn state $ def
+        { resMessage = txt
+        , resRoom = roRoom <|> rsRoom state
+        , resColour = roColour
+        }
 
 respond :: T.Text -> RouteStateIO ()
 respond out = do
@@ -29,25 +48,6 @@ respond out = do
         { resMessage = out
         , resRoom = rsRoom state
         }
-
-respondWithColour :: MessageColour -> T.Text -> RouteStateIO ()
-respondWithColour col out = do
-    state <- S.get
-    liftIO $ rsReplyFn state $ def
-        { resMessage = out
-        , resColour = Just col
-        , resRoom = rsRoom state
-        }
-
-respondSlowly :: T.Text -> RouteStateIO ()
-respondSlowly t = do
-    sleepMs $ (T.length t) * 110
-    respond t
-
-respondSlowlyWithColour :: MessageColour -> T.Text -> RouteStateIO ()
-respondSlowlyWithColour col t = do
-    sleepMs $ (T.length t) * 110
-    respondWithColour col t
 
 -- get reminders object:
 askReminders :: RouteStateIO (Reminders MessageResponse)
@@ -75,3 +75,11 @@ random = liftIO $ randomIO
 
 randomRange :: (MonadIO m, Random a) => (a,a) -> m a
 randomRange r = liftIO $ randomRIO r
+
+addRelativeToUTC :: RelativeTime -> Time.UTCTime -> Time.UTCTime
+addRelativeToUTC RelativeTime{..} Time.UTCTime{..} =
+    let d1 = relDays `Time.addDays` utctDay
+        d2 = relMonths `Time.addGregorianMonthsClip` d1
+        newd = relYears `Time.addGregorianYearsClip` d2
+        newt = (fromIntegral relMs/1000) + utctDayTime
+    in Time.UTCTime newd newt
