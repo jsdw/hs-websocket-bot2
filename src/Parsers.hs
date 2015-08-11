@@ -174,7 +174,6 @@ pRelativeTime = do
               --relative to ms
               (i ["ms", "milisecond", "miliseconds"] -> True) -> (0,0,0, round $ num         )
               (i ["s", "second", "seconds"]          -> True) -> (0,0,0, round $ num*seconds )
-              (i ["m", "minute", "minutes"]          -> True) -> (0,0,0, round $ num*minutes )
               (i ["h", "hour", "hours"]              -> True) -> (0,0,0, round $ num*hours   )
               --relative to days
               (i ["d", "day", "days"]                -> True) -> (0,0, round $ num,       0)
@@ -185,7 +184,8 @@ pRelativeTime = do
               (i ["y", "year", "years"]              -> True) -> (round $ num,         0,0,0)
               (i ["decade", "decades"]               -> True) -> (round $ num*decades, 0,0,0)
               (i ["eon", "eons"]                     -> True) -> (round $ num*eons,    0,0,0)
-              _                                               -> (round $ num*minutes, 0,0,0)
+              --default is minutes
+              _                                               -> (0,0,0, round $ num*minutes)
               where i (a:as) w = if a == w then True else i as w
                     i []     w = False
     skipSeperators :: Parser ()
