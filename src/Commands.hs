@@ -78,8 +78,8 @@ randomRange r = liftIO $ randomRIO r
 
 addRelativeToUTC :: RelativeTime -> Time.UTCTime -> Time.UTCTime
 addRelativeToUTC RelativeTime{..} Time.UTCTime{..} =
-    let d' = Time.addDays relDays
+    let d' = Time.addDays                relDays
            . Time.addGregorianMonthsClip relMonths
-           . Time.addGregorianYearsClip relYears
+           . Time.addGregorianYearsClip  relYears
            $ utctDay
     in (fromIntegral relMs/1000) `Time.addUTCTime` (Time.UTCTime d' utctDayTime)
