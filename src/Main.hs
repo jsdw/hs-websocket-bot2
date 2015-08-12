@@ -5,12 +5,14 @@ import Internal.Types
 
 import Tools.Persist
 import Tools.Reminders
+import Tools.Text
 
 import Commands
 import Parsers
 
 import           System.Environment  (getArgs)
 import qualified Data.Text           as T
+import qualified Data.Text.IO        as T
 import           Data.Monoid         ((<>))
 import           Data.Default
 import           Data.Aeson
@@ -47,7 +49,7 @@ routes = do
         let resp = def
               { resColour = Just Red
               , resRoom = room
-              , resMessage = reminder
+              , resMessage = swapFirstAndSecondPerson reminder
               }
 
         respond $ name <> " reminder set."
@@ -63,9 +65,9 @@ routes = do
         tz          <- liftIO $ getCurrentTimeZone
 
         let formattedTime t = T.pack $ formatTime defaultTimeLocale "%H:%M %d/%m/%Y" (utcToLocalTime tz t)
-            reminderStr = foldl' foldfn "" (zip [1..] myReminders)
+            reminderStr = foldl' foldfn "/quote " (zip [1..] myReminders)
             foldfn txt (i, Reminder{ reminderText = MessageResponse{..}, reminderTimes = (t:_) }) =
-                txt <> "(" <> (T.pack (show i)) <> ") remember " <> resMessage
+                txt <> (T.pack (show i)) <> ". remember " <> resMessage
                     <> " (next is " <> formattedTime t <> ")\r\n"
 
         if length myReminders == 0
@@ -172,7 +174,9 @@ main = do
 -- out and hook it together.
 handleReminders :: Reminders MessageResponse -> (MessageResponse -> IO ()) -> IO ()
 handleReminders reminders write = onReminder reminders $
-    \name MessageResponse{..} -> write def
-        { resMessage = name <> " remember " <> resMessage
-        , resRoom = resRoom
-        }
+    \name MessageResponse{..} -> do
+        T.putStrLn $ name <> " remember " <> resMessage
+        write def
+            { resMessage = name <> " remember " <> resMessage
+            , resRoom = resRoom
+            }

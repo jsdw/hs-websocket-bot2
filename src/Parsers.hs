@@ -154,6 +154,7 @@ pRelativeTime = do
         skipSeperators
         let res = (y+y', m+m', d+d', ms+ms')
         loop res <|> return res
+
     parseRel :: Parser (Integer,Integer,Integer,Integer)
     parseRel = do
         num <- double
@@ -188,6 +189,7 @@ pRelativeTime = do
               _                                               -> (0,0,0, round $ num*minutes)
               where i (a:as) w = if a == w then True else i as w
                     i []     w = False
+
     skipSeperators :: Parser ()
     skipSeperators =
         let spaces = skipWhile $ inClass " \n\t,+"
