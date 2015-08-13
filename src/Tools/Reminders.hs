@@ -193,12 +193,12 @@ getReminders Reminders{..} name = liftIO $ M.findWithDefault [] name <$> readMVa
 --
 -- Remove a reminder for someone based on its position in the list.
 --
-removeReminder :: MonadIO m => Reminders rem -> ReminderPerson -> Integer -> m ()
-removeReminder Reminders{..} name n = liftIO $ modifyMVar_ reminders $ \rmap ->
+removeReminder :: MonadIO m => Reminders rem -> ReminderPerson -> Integer -> m Bool
+removeReminder Reminders{..} name n = liftIO $ modifyMVar reminders $ \rmap ->
     let rs = M.findWithDefault [] name rmap
-        newrs = foldr (\(n',r) b -> if n' /= n then r:b else b) [] (L.zip [1..] rs)
+        (newrs,bRemoved) = foldr (\(n',r) (arr,b) -> if n' /= n then (r:arr,b) else (arr,True)) ([],False) (L.zip [1..] rs)
         newmap = M.insert name newrs rmap
-    in return newmap
+    in return (newmap,bRemoved)
 
 --
 -- Subscribe to being handed reminders when they occur

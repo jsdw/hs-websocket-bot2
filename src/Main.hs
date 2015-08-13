@@ -24,6 +24,7 @@ import qualified Control.Monad.State as S
 import           Control.Applicative ((<$>),(<*>),(<|>))
 import           Data.Time
 import           Data.Foldable
+import           Numeric             (showHex)
 
 --
 -- For each message that is received, attempt to
@@ -81,8 +82,12 @@ routes = do
         name        <- askName
         reminders   <- askReminders
 
-        removeReminder reminders name n
-        respond $ name <> " reminder " <> (T.pack $ show n) <> " removed."
+        let toHex n = T.pack $ "0x" ++ showHex (n*24000) ""
+
+        bRemoved <- removeReminder reminders name n
+        respond $ if bRemoved
+            then name <> " reminder " <> (T.pack $ show n) <> " removed."
+            else name <> " SEGMENTATION FAULT. Memory core location "<> toHex n <>" erased."
 
     -- a reminders reminder
     addRoute
