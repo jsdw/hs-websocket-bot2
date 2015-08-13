@@ -43,40 +43,45 @@ instance Default ServerSettings where
 -- settings and it'll run a server and fire the relevant
 -- callback with pre-decoded json where necessary, or
 -- error cb if something goes wrong.
-startServer :: (ToJSON b, FromJSON a) => ServerSettings -> IO (IO a, b -> IO ())
-startServer ServerSettings{..} = do
+startServer :: (ToJSON b, FromJSON a)
+            => ServerSettings
+            -> (IO a -> (b -> IO ()) -> IO ()) -- callback takes thing to read and thing to write to
+            -> IO ()
+startServer ServerSettings{..} callback = do
 
     sLogger $ "Starting server"
     sLogger $ "==============="
     sLogger $ "Port:    " <> T.pack (show sPort)
     sLogger $ "Address: " <> sAddress
 
-    (in_read, in_write) <- makeChan
-    (out_read, out_write) <- makeChan
+    WS.runServer (T.unpack sAddress) sPort $ application callback sError
+    return ()
 
-    forkIO $ WS.runServer (T.unpack sAddress) sPort $ application (in_read, out_write) sError
-    return (out_read, in_write)
-
-application :: (FromJSON b, ToJSON a)
-            => (IO a, b -> IO ())
+application :: (FromJSON a, ToJSON b)
+            => (IO a -> (b -> IO ()) -> IO ())  -- our callback which will read/write messages
             -> (ServerError -> IO ())           -- an error callback
             -> WS.ServerApp                     -- the server app constructed
-application (read,write) err pending = do
+application callback err pending = do
+
+    (in_read, in_write) <- makeChan
+    (out_read, out_write) <- makeChan
 
     conn <- WS.acceptRequest pending
     WS.forkPingThread conn 30
 
     forkIO $ forever $ do
-        msg <- read
+        msg <- in_read
         WS.sendTextData conn $ JSON.encode msg
 
-    forever $ do
+    forkIO $ forever $ do
         msg <- WS.receiveData conn :: IO BL.ByteString
         let mRes = JSON.decode msg
 
         case mRes of
             Nothing -> err (ParseFailureError msg)
-            Just res -> write res
+            Just res -> out_write res
+
+    callback out_read in_write
 
 -- The default error handler logs to stderr
 -- the default logger logs to stdout

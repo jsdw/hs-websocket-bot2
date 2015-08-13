@@ -142,11 +142,16 @@ main = do
           , sPort = port
           }
 
-    -- open our websocket connection up
-    (read,write) <- startServer socketSettings
-
     -- load in our reminders system and attach to write.
     reminders <- loadReminders (mkDefaultReminderOpts "jamesbot-reminders.json")
+
+    -- each time someone connects we run this:
+    startServer socketSettings (callback reminders)
+
+
+callback :: Reminders MessageResponse -> IO MessageReceived -> (MessageResponse -> IO ()) -> IO ()
+callback reminders read write = do
+
     handleReminders reminders write
 
     -- run any received messages against the
@@ -174,9 +179,5 @@ main = do
 -- out and hook it together.
 handleReminders :: Reminders MessageResponse -> (MessageResponse -> IO ()) -> IO ()
 handleReminders reminders write = onReminder reminders $
-    \name MessageResponse{..} -> do
-        T.putStrLn $ name <> " remember " <> resMessage
-        write def
-            { resMessage = name <> " remember " <> resMessage
-            , resRoom = resRoom
-            }
+    \name r@MessageResponse{..} ->
+        write r{ resMessage = "BZZT! " <> name <> " remember " <> resMessage }
