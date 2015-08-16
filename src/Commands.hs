@@ -76,10 +76,3 @@ random = liftIO $ randomIO
 randomRange :: (MonadIO m, Random a) => (a,a) -> m a
 randomRange r = liftIO $ randomRIO r
 
-addRelativeToUTC :: RelativeTime -> Time.UTCTime -> Time.UTCTime
-addRelativeToUTC RelativeTime{..} Time.UTCTime{..} =
-    let d' = Time.addDays                relDays
-           . Time.addGregorianMonthsClip relMonths
-           . Time.addGregorianYearsClip  relYears
-           $ utctDay
-    in (fromIntegral relMs/1000) `Time.addUTCTime` (Time.UTCTime d' utctDayTime)

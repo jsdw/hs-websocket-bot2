@@ -11,10 +11,11 @@ import           Prelude              hiding (take)
 import           Data.Attoparsec.Text
 import qualified Data.Text            as T
 import qualified Data.List            as L
+import qualified Data.Time            as Time
 import           Data.Time            as Time
-import           Control.Applicative  ((<|>))
+import           Control.Applicative
+import           Control.Monad
 import           Data.Monoid          ((<>))
-import           Control.Monad        (void)
 import           Data.Char            (toLower,toUpper)
 --
 -- This module contains all of the parsers we'll use in routes
@@ -55,7 +56,57 @@ pRest = takeText
 pDecimal :: Integral a => Parser a
 pDecimal = decimal
 
--- parse a date, supported formats:
+--
+-- Parse some relative or absolute time from now and give it back
+-- as an absolute UTC time. This does all the hard work not only
+-- of parsing time but converting from relative to absolute and
+-- handling local to UTC conversion.
+--
+pTime :: RoutesInput -> Parser Time.UTCTime
+pTime RoutesInput{ routesTime = time, routesTimeZone = tz } = absTime <|> relTime <|> absTime2
+  where
+
+    LocalTime{localDay = lday, localTimeOfDay = ltime} = Time.utcToLocalTime tz time
+
+    absTime  = toUTC $ LocalTime <$> dateSpaced <*> (pTimeOfDay <|> (return $ ltime))
+    relTime  = addRelativeToUTC time <$> (sep *> pRelativeTime)
+    absTime2 = toUTC $ flip LocalTime <$> timeSpaced <*> (pDate <|> (return $ lday))
+
+    toUTC = fmap (Time.localTimeToUTC tz)
+    dateSpaced = sep *> pDate      <* sep
+    timeSpaced = sep *> pTimeOfDay <* sep
+    sep = skipSpace >> (pIS "at" <|> pIS "on" <|> return "") >> skipSpace
+
+    addRelativeToUTC :: Time.UTCTime -> RelativeTime -> Time.UTCTime
+    addRelativeToUTC Time.UTCTime{..} RelativeTime{..} =
+        let d' = Time.addDays                relDays
+               . Time.addGregorianMonthsClip relMonths
+               . Time.addGregorianYearsClip  relYears
+               $ utctDay
+        in (fromIntegral relMs/1000) `Time.addUTCTime` (Time.UTCTime d' utctDayTime)
+
+-- parse an absolute time, supported formats:
+-- HH:MM
+-- [H]H:MM[am/pm]
+-- HH
+-- [H]H[am/pm]
+pTimeOfDay :: Parser Time.TimeOfDay
+pTimeOfDay = do
+    h' <- decimal
+    m <- time
+    s <- time
+    plushours <- suffix
+
+    let h = h' + plushours
+
+    --don't let invalid times through:
+    guard $ h >= 0 && h < 24 && m >= 0 && m < 60 && s >= 0 && s < 60
+    return $ TimeOfDay h m (fromIntegral s)
+  where
+    suffix = (pIS "pm" >> return 12) <|> return 0
+    time = (char ':' >> decimal) <|> return 0
+
+-- parse an absolute date, supported formats:
 -- DD/MM/YYYY
 -- YYYY/MM/DD
 -- Dec[ember] DD[th/rd/nd] YYYY
@@ -127,7 +178,7 @@ pDate = do
     dayOrMonth = numOfLength 2 <|> numOfLength 1
 
     dateSep :: Parser ()
-    dateSep = skip (inClass "-:/ ")
+    dateSep = skip (inClass "-/ ")
 
     spaceLike :: Parser ()
     spaceLike = skipWhile $ inClass ", "
@@ -171,24 +222,31 @@ pRelativeTime = do
             decades     = 10
             eons        = 1000
 
-        return $ case T.toLower word of
+        let res = case T.toLower word of
               --relative to ms
-              (i ["ms", "milisecond", "miliseconds"] -> True) -> (0,0,0, round $ num         )
-              (i ["s", "second", "seconds"]          -> True) -> (0,0,0, round $ num*seconds )
-              (i ["h", "hour", "hours"]              -> True) -> (0,0,0, round $ num*hours   )
+              (i ["ms", "milisecond", "miliseconds"] -> True) -> s (0,0,0, round $ num         )
+              (i ["s", "secs", "second", "seconds"]  -> True) -> s (0,0,0, round $ num*seconds )
+              (i ["h", "hour", "hours"]              -> True) -> s (0,0,0, round $ num*hours   )
+              (i ["m", "min", "mins", "minutes"]     -> True) -> s (0,0,0, round $ num*minutes)
               --relative to days
-              (i ["d", "day", "days"]                -> True) -> (0,0, round $ num,       0)
-              (i ["w", "week", "weeks"]              -> True) -> (0,0, round $ num*weeks, 0)
+              (i ["d", "day", "days"]                -> True) -> s (0,0, round $ num,       0)
+              (i ["w", "week", "weeks"]              -> True) -> s (0,0, round $ num*weeks, 0)
               --relative to months
-              (i ["month", "months"]                 -> True) -> (0, round $ num, 0,0)
+              (i ["month", "months"]                 -> True) -> s (0, round $ num, 0,0)
               --relative to years
-              (i ["y", "year", "years"]              -> True) -> (round $ num,         0,0,0)
-              (i ["decade", "decades"]               -> True) -> (round $ num*decades, 0,0,0)
-              (i ["eon", "eons"]                     -> True) -> (round $ num*eons,    0,0,0)
+              (i ["y", "year", "years"]              -> True) -> s (round $ num,         0,0,0)
+              (i ["decade", "decades"]               -> True) -> s (round $ num*decades, 0,0,0)
+              (i ["eon", "eons"]                     -> True) -> s (round $ num*eons,    0,0,0)
               --default is minutes
-              _                                               -> (0,0,0, round $ num*minutes)
+              _                                               -> fail
               where i (a:as) w = if a == w then True else i as w
                     i []     w = False
+                    s    = Just
+                    fail = Nothing
+
+        case res of
+            Just r  -> return r
+            Nothing -> fail "pRelativeTime: unknown time suffix"
 
     skipSeperators :: Parser ()
     skipSeperators =

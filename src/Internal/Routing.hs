@@ -5,7 +5,7 @@ module Internal.Routing (
     runRoutes,
 
     Routes,
-    RoutesInput,
+    RoutesInput(..),
     mkRoutesInput,
 
     -- reexport parsing bits of interest
@@ -29,16 +29,22 @@ type Routes res = W.Writer [RoutesInput -> Maybe res] ()
 -- data provided to routes, not exposed.
 -- use a constructor to create:
 data RoutesInput = RoutesInput
-    { routesMessage :: T.Text
-    , routesRandom  :: [Double]
+    { routesMessage  :: T.Text
+    , routesRandom   :: [Double]
+    , routesTime     :: Time.UTCTime
+    , routesTimeZone :: Time.TimeZone
     }
 
 mkRoutesInput :: MonadIO m => T.Text -> m RoutesInput
 mkRoutesInput msg = do
     randomGen <- liftIO $ newStdGen
+    time      <- liftIO $ Time.getCurrentTime
+    tz        <- liftIO $ Time.getCurrentTimeZone
     return RoutesInput
-        { routesMessage = msg
-        , routesRandom  = randomRs (0,1) randomGen
+        { routesMessage  = msg
+        , routesRandom   = randomRs (0,1) randomGen
+        , routesTime     = time
+        , routesTimeZone = tz
         }
 
 -- construct a route by providing parsers, and a function to operate

@@ -40,11 +40,8 @@ routes = do
 
     -- BOTNAME remind me REMINDER in TIME_FROM_NOW
     addRoute
-      ( pBotName <..> pS "remind me" <..> var (pUntil (pS " in")) <..> var pRelativeTime <+> pRest )
-      $ \(reminder,_) relativeTime -> do
-
-        time <- liftIO $ getCurrentTime
-        let futureTime = relativeTime `addRelativeToUTC` time
+      ( pBotName <..> pS "remind me" <..> var (pUntil (pS " in" <|> pS " on" <|> pS " at")) <..> var pTime <+> pRest )
+      $ \(reminder,_) reminderTime -> do
 
         name      <- askName
         room      <- askRoom
@@ -57,7 +54,7 @@ routes = do
               }
 
         respond $ name <> " reminder set."
-        addReminder reminders name resp Once futureTime
+        addReminder reminders name resp Once reminderTime
 
     addRoute
       ( pBotName <..> pS "show reminders" <+> pRest )
