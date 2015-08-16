@@ -5,6 +5,7 @@ module Internal.Routing (
     runRoutes,
 
     Routes,
+    RoutesInput,
     mkRoutesInput,
 
     -- reexport parsing bits of interest
@@ -45,11 +46,11 @@ mkRoutesInput msg = do
 -- interface so we can dynamically convert things that arent parsers
 -- into the right type first. Especially useful when only providng a
 -- single parser for instance, to ensure correct types.
-addRoute :: WrapParser RoutesInput ps
+addRoute :: (WrapParser ps, ParserReadTy ps RoutesInput)
          => ps -> ParserVarFn (WrapParserTy ps) out -> Routes out
 addRoute parsers fn = addMaybeRoute 1 parsers fn
 
-addMaybeRoute :: WrapParser RoutesInput ps
+addMaybeRoute :: (WrapParser ps, ParserReadTy ps RoutesInput)
               => Double -> ps -> ParserVarFn (WrapParserTy ps) out -> Routes out
 addMaybeRoute n parsers fn = W.writer ((), [input])
   where

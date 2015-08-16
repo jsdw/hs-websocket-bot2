@@ -7,6 +7,7 @@
     UndecidableInstances,
     MultiParamTypeClasses,
     ScopedTypeVariables,
+    ConstraintKinds,
     GADTs #-}
 
 module Internal.Parsing (
@@ -20,9 +21,11 @@ module Internal.Parsing (
     -- useful types:
     ParserVarFn,
     WrapParser(..),
-    WrapParserTy
+    ParserReadTy
 
 ) where
+
+import           GHC.Exts             (Constraint)
 
 import qualified Data.Attoparsec.Text as P
 import qualified Data.Text            as T
@@ -72,107 +75,83 @@ runParsers p readable text fn = case run p (Just (text,fn)) of
         P.Partial res -> bind fn (res "")
         _ -> Nothing
 
- --Desired transformations:
-
- --var           PARSER     => PVar    (\_ -> PARSER)
- --var (\read -> PARSER)    => PVar    (\read -> PARSER)
- --static PARSER            => PStatic (\_ -> PARSER)
- --       PARSER            => PStatic (\_ -> PARSER)
- --static (\read -> PARSER) => PStatic (\read -> PARSER)
- --       (\read -> PARSER) => PStatic (\read -> PARSER)
-
--- ProvideState
--- PARSER            => (\_ -> PARSER)
--- (\read -> PARSER) => (\read -> PARSER)
 --
--- More formally:
+-- A constraint that everything is inhabitant of:
+--
+class Anything a where
+instance Anything a where
+
+
+-- Given a parser-like thing, This constraint
+-- locks down the type of thing that can
+-- optionally be fed to it:
+type family ParserReadTy p r :: Constraint where
+    ParserReadTy (P.Parser a)         r = Anything r
+    ParserReadTy (read -> P.Parser a) r = read ~ r
+    ParserReadTy (Parsers read ty)    r = read ~ r
+
+
+-- In order to make variable/static parsers on demand,
+-- we need to partially wrap parsers with state but then
+-- stop there.
+--
+-- Desired transformations:
 --
 -- P.Parser a         => read -> P.Parser a
 -- read -> P.Parser a => read -> P.Parser a
+--
+class ProvideState p where
+    type ParserOutTy p
+    provideState :: p -> (ParserReadTy p b => b -> P.Parser (ParserOutTy p))
 
-type family ProvideStateTy p where
-    ProvideStateTy (P.Parser a) = a
-    ProvideStateTy (read -> P.Parser a) = a
-
-class ProvideState (read :: *) p where
-    provideState :: p -> (read -> P.Parser (ProvideStateTy p))
-
-instance ProvideState read (P.Parser a) where
+instance ProvideState (P.Parser a) where
+    type ParserOutTy (P.Parser a) = a
     provideState parser = \_ -> parser
 
-instance ProvideState read (read -> P.Parser a) where
+instance ProvideState (read -> P.Parser a) where
+    type ParserOutTy (read -> P.Parser a) = a
     provideState = id
 
--- WrapParser
--- var (\read -> PARSER) => var    (\read -> PARSER)
---     (\read -> PARSER) => static (\read -> PARSER)
+var p = PVar $ provideState p
+static p = PStatic $ provideState p
+
+
+-- Wraps a parser into a standard form. This could use the
+-- above to remove an instance but simpler to duplicate.
 --
--- More formally:
+-- Desired transformations:
 --
--- Parsers read tys => Parsers read tys
--- P.Parser a       => Parsers read (PS a)
+-- P.Parser a         => read -> P.Parser a
+-- read -> P.Parser a => Parsers read (PS a)
+-- Parsers read ty    => Parsers read ty
+--
+class WrapParser p where
+    type WrapParserTy p :: ParserTy *
+    wrapParser :: ParserReadTy p r => p -> Parsers r (WrapParserTy p)
 
-type family WrapParserTy p where
-    WrapParserTy (Parsers read ty) = ty
-    WrapParserTy p = PS (ProvideStateTy p)
+instance WrapParser (P.Parser a) where
+    type WrapParserTy (P.Parser a) = PS a
+    wrapParser p = PStatic (\_ -> p)
 
-class WrapParser (read :: *) parserLike where
-    wrapParser :: parserLike -> Parsers read (WrapParserTy parserLike)
+instance WrapParser (read -> P.Parser a) where
+    type WrapParserTy (read -> P.Parser a) = PS a
+    wrapParser p = PStatic p
 
-instance (PS (ProvideStateTy p) ~ WrapParserTy p, ProvideState read p) => WrapParser read p where
-    wrapParser p = PStatic $ provideState p
+instance WrapParser (Parsers read ty) where
+    type WrapParserTy (Parsers read ty) = ty
+    wrapParser p = p
 
-instance {-# OVERLAPPING #-} WrapParser read (Parsers read ty) where
-    wrapParser = id
 
 -- create a nice syntax for defining Parsers,
 -- basically a wrapper for PCons/PStatic/PVar
 -- which autowraps into PStatic if not wrapped.
 infixl 5 <+>
-(<+>) :: (WrapParser read p1, WrapParser read p2)
+(<+>) :: (WrapParser p1, WrapParser p2, ParserReadTy p1 read, ParserReadTy p2 read)
       => p1 -> p2 -> Parsers read (PC (WrapParserTy p1) (WrapParserTy p2))
 (<+>) p1 p2 = PCons (wrapParser p1) (wrapParser p2)
 
-var p    = PVar (provideState p)
-static p = PStatic (provideState p)
 
 
----- wrap converts a raw (P.Parser a) into a
----- wrapped (Parsers (PS a), but leaves an
----- already wrapped parser alone.
---class WrapParser read a where
---    type ResParserTy a :: ParserTy *
---    wrap :: a -> Parsers read (ResParserTy a)
-
---instance WrapParser read (Parsers read p) where
---    type ResParserTy (Parsers read p) = p
---    wrap = id
-
---instance WrapParser read (read -> P.Parser p) where
---    wrap pfn = PStatic pfn
-
---instance WrapParser read (P.Parser p) where
---    type ResParserTy (P.Parser p) = PS p
---    wrap p = wrap (\_ -> p)
-
---instance WrapParser read String where
---    type ResParserTy String = PS T.Text
---    wrap str = PStatic (\_ -> (P.string $ T.pack str))
-
---instance WrapParser read Char where
---    type ResParserTy Char = PS Char
---    wrap c = PStatic (\_ -> (P.char c))
-
--- create a nice syntax for defining Parsers,
--- basically a wrapper for PCons/PStatic/PVar
--- which autowraps into PStatic if not wrapped.
---infixl 5 <+>
---(<+>) :: (WrapParser p1, WrapParser p2) =>
---         p1 -> p2 -> Parsers (PC (ResParserTy p1) (ResParserTy p2))
---(<+>) p1 p2 = PCons (wrap p1) (wrap p2)
-
---var = PVar
---static = PStatic
 
 
 

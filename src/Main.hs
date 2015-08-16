@@ -27,6 +27,8 @@ import           Data.Time
 import           Data.Foldable
 import           Numeric             (showHex)
 
+import GHC.Exts (Constraint)
+
 --
 -- For each message that is received, attempt to
 -- parse it against each of these routes from top
@@ -188,3 +190,5 @@ handleReminders :: Reminders MessageResponse -> (MessageResponse -> IO ()) -> IO
 handleReminders reminders write = onReminder reminders $
     \name r@MessageResponse{..} ->
         write r{ resMessage = "BZZT! " <> name <> " remember " <> resMessage }
+
+
