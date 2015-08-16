@@ -143,13 +143,13 @@ loadReminders ReminderOpts{..} = liftIO $ do
             else (Nothing, Just r)
 
     -- create an IO action which fires all callbacks:
-    fireCallbacks :: [ReminderPerson -> rem -> IO ()] -> [(ReminderPerson, rem, NominalDiffTime)] -> IO ()
+    fireCallbacks :: [(Int,ReminderPerson -> rem -> IO ())] -> [(ReminderPerson, rem, NominalDiffTime)] -> IO ()
     fireCallbacks cbs ms = sequence_ $ foldl' resolvecbs [] ms
         where
           resolvecbs as (name,txt,dt) =
               let a = forkIO $ do
                       threadDelay $ floor $ dt * 1000000
-                      sequence_ $ fmap (\fn -> fn name txt) cbs
+                      sequence_ $ fmap (\(_,fn) -> fn name txt) cbs
               in a:as
 
 
@@ -203,8 +203,11 @@ removeReminder Reminders{..} name n = liftIO $ modifyMVar reminders $ \rmap ->
 --
 -- Subscribe to being handed reminders when they occur
 --
-onReminder :: MonadIO m => Reminders rem -> (ReminderPerson -> rem -> IO ()) -> m ()
-onReminder Reminders{..} fn = liftIO $ modifyMVar_ subscribed $ \cs -> return (fn:cs)
+onReminder :: MonadIO m => Reminders rem -> (ReminderPerson -> rem -> IO ()) -> m (IO ())
+onReminder Reminders{..} fn = liftIO $ modifyMVar subscribed $ \cs ->
+    let newId = foldl' (\newId (id,_) -> if id >= newId then id+1 else newId) 0 cs
+        offFn = modifyMVar_ subscribed (return . filter (\(id,_) -> id /= newId))
+    in return (((newId,fn):cs),offFn)
 
 
 
@@ -217,5 +220,5 @@ onReminder Reminders{..} fn = liftIO $ modifyMVar_ subscribed $ \cs -> return (f
 
 data Reminders rem = Reminders
     { reminders :: MVar (M.Map ReminderPerson [Reminder rem]) -- map of name to reminder list
-    , subscribed :: MVar [ ReminderPerson -> rem -> IO () ]
+    , subscribed :: MVar [(Int, ReminderPerson -> rem -> IO ())]
     }

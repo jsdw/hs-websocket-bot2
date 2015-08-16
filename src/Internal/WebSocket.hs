@@ -19,6 +19,7 @@ import           Data.Default               (def,Default)
 import           Data.Monoid                ((<>))
 import           Control.Monad.Trans        (liftIO, MonadIO)
 import qualified System.IO                  as IO
+import qualified Control.Exception          as E
 import           Control.Monad
 import           Control.Concurrent
 
@@ -39,6 +40,7 @@ instance Default ServerSettings where
         , sLogger = defaultLogHandler
         }
 
+
 -- this is the main export from here. provide it some
 -- settings and it'll run a server and fire the relevant
 -- callback with pre-decoded json where necessary, or
@@ -55,8 +57,12 @@ startServer ServerSettings{..} callback = do
     sLogger $ "Address: " <> sAddress
 
     WS.runServer (T.unpack sAddress) sPort $ application callback sError
-    return ()
 
+
+-- this is run whenever a new connection is established.
+-- when it finishes, the new connection is closed. We rely
+-- on the user supplied callback to block if it wants to keep
+-- open.
 application :: (FromJSON a, ToJSON b)
             => (IO a -> (b -> IO ()) -> IO ())  -- our callback which will read/write messages
             -> (ServerError -> IO ())           -- an error callback
@@ -69,19 +75,28 @@ application callback err pending = do
     conn <- WS.acceptRequest pending
     WS.forkPingThread conn 30
 
-    forkIO $ forever $ do
-        msg <- in_read
+    tid1 <- toClient conn in_read
+    tid2 <- fromClient conn out_write
+
+    callback out_read in_write `E.finally` do
+        killThread tid1
+        killThread tid2
+
+  where
+    -- read messages from the callback and send them
+    -- to the connected client
+    toClient conn read = forkIO $ forever $ do
+        msg <- read
         WS.sendTextData conn $ JSON.encode msg
-
-    forkIO $ forever $ do
-        msg <- WS.receiveData conn :: IO BL.ByteString
-        let mRes = JSON.decode msg
-
-        case mRes of
-            Nothing -> err (ParseFailureError msg)
-            Just res -> out_write res
-
-    callback out_read in_write
+    -- receive messages from the connected client and
+    -- send them on to the callback
+    fromClient conn write = do
+        tid0 <- myThreadId
+        forkIO $ flip E.finally (E.throwTo tid0 E.ThreadKilled) $ forever $ do
+            msg <- WS.receiveData conn :: IO BL.ByteString
+            case JSON.decode msg of
+                Nothing -> err (ParseFailureError msg)
+                Just res -> write res
 
 -- The default error handler logs to stderr
 -- the default logger logs to stdout

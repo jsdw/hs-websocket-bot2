@@ -22,6 +22,7 @@ import           Control.Monad
 import           Control.Monad.Trans
 import qualified Control.Monad.State as S
 import           Control.Applicative ((<$>),(<*>),(<|>))
+import qualified Control.Exception   as E
 import           Data.Time
 import           Data.Foldable
 import           Numeric             (showHex)
@@ -156,13 +157,13 @@ main = do
 
 callback :: Reminders MessageResponse -> IO MessageReceived -> (MessageResponse -> IO ()) -> IO ()
 callback reminders read write = do
-
-    handleReminders reminders write
-
+    offReminders <- handleReminders reminders write
+    loop `E.finally` putStrLn "running cleanup" >> offReminders
+  where
     -- run any received messages against the
     -- routes, performing the associated action
     -- if a matching one is found
-    forever $ do
+    loop = forever $ do
 
         MessageReceived{..} <- read
         routesInput <- mkRoutesInput rMessage
@@ -180,9 +181,10 @@ callback reminders read write = do
             Nothing -> return ()
 
 
+
 -- take some reminders and a function to write them
 -- out and hook it together.
-handleReminders :: Reminders MessageResponse -> (MessageResponse -> IO ()) -> IO ()
+handleReminders :: Reminders MessageResponse -> (MessageResponse -> IO ()) -> IO (IO ())
 handleReminders reminders write = onReminder reminders $
     \name r@MessageResponse{..} ->
         write r{ resMessage = "BZZT! " <> name <> " remember " <> resMessage }

@@ -15,7 +15,9 @@ makeChan :: MonadIO m => m (IO a, a -> IO ())
 makeChan = liftIO $ do
     mv <- newEmptyMVar
     let reader = takeMVar mv
-        writer a = isEmptyMVar mv >>= \b -> if b then putMVar mv a else modifyMVar_ mv (\_ -> return a)
+        writer a = isEmptyMVar mv >>= \b ->
+            if b then putMVar mv a
+                 else modifyMVar_ mv (\_ -> return a)
     return (reader, writer)
 
 makeExpiringChan :: MonadIO m => Int -> m (IO a, a -> IO ())
