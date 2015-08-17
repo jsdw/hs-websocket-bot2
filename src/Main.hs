@@ -38,10 +38,9 @@ import GHC.Exts (Constraint)
 routes :: Routes (RouteStateIO ())
 routes = do
 
-    -- BOTNAME remind me REMINDER in TIME_FROM_NOW
     addRoute
-      ( pBotName <..> pS "remind me" <..> var (pUntil (pS " in" <|> pS " on" <|> pS " at")) <..> var pTime <+> pRest )
-      $ \(reminder,_) reminderTime -> do
+      ( pBotName <..> pS "remind me" <..> var pTime <..> pS "to" <..> var pRest )
+      $ \reminderTime reminder -> do
 
         name      <- askName
         room      <- askRoom
@@ -68,7 +67,7 @@ routes = do
         let formattedTime t = T.pack $ formatTime defaultTimeLocale "%H:%M %d/%m/%Y" (utcToLocalTime tz t)
             reminderStr = foldl' foldfn "/quote " (zip [1..] myReminders)
             foldfn txt (i, Reminder{ reminderText = MessageResponse{..}, reminderTimes = (t:_) }) =
-                txt <> (T.pack (show i)) <> ". remember " <> resMessage
+                txt <> (T.pack (show i)) <> ". remember to " <> resMessage
                     <> " (next is " <> formattedTime t <> ")\r\n"
 
         if length myReminders == 0
@@ -92,7 +91,7 @@ routes = do
     -- a reminders reminder
     addRoute
       ( pBotName <..> pS "remind" <+> pRest )
-      $ respond "Want a reminder? remind me REMINDER in NUMBER UNIT"
+      $ respond "Want a reminder? remind me TIME to REMINDER"
 
     -- say something!
     addRoute
@@ -186,6 +185,6 @@ callback reminders read write = do
 handleReminders :: Reminders MessageResponse -> (MessageResponse -> IO ()) -> IO (IO ())
 handleReminders reminders write = onReminder reminders $
     \name r@MessageResponse{..} ->
-        write r{ resMessage = "BZZT! " <> name <> " remember " <> resMessage }
+        write r{ resMessage = "BZZT! " <> name <> " remember to " <> resMessage }
 
 
