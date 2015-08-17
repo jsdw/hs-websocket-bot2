@@ -75,7 +75,7 @@ pTime RoutesInput{ routesTime = time, routesTimeZone = tz } = absTime <|> relTim
     toUTC = fmap (Time.localTimeToUTC tz)
     dateSpaced = sep *> pDate      <* sep
     timeSpaced = sep *> pTimeOfDay <* sep
-    sep = skipSpace >> (pIS "at" <|> pIS "on" <|> return "") >> skipSpace
+    sep = skipSpace >> (pIS "at" <|> pIS "on" <|> pS "in" <|> return "") >> skipSpace
 
     addRelativeToUTC :: Time.UTCTime -> RelativeTime -> Time.UTCTime
     addRelativeToUTC Time.UTCTime{..} RelativeTime{..} =
