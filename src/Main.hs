@@ -21,7 +21,8 @@ import           Text.Read           (readMaybe)
 import           Control.Monad
 import           Control.Monad.Trans
 import qualified Control.Monad.State as S
-import           Control.Applicative ((<$>),(<*>),(<|>))
+import           Control.Applicative
+import           Control.Concurrent
 import qualified Control.Exception   as E
 import           Data.Time
 import           Data.Foldable
@@ -39,21 +40,22 @@ routes :: Routes (RouteStateIO ())
 routes = do
 
     addRoute
-      ( pBotName <..> pS "remind me" <..> var pTime <..> pS "to" <..> var pRest )
-      $ \reminderTime reminder -> do
+      ( pBotName <..> pS "remind" <..> var pName <..> var pTime <..> pS "to" <..> var pRest )
+      $ \remindPerson reminderTime reminder -> do
 
         name      <- askName
         room      <- askRoom
         reminders <- askReminders
 
-        let resp = def
+        let rName = if remindPerson == "me" then name else remindPerson
+            resp = def
               { resColour = Just Red
               , resRoom = room
               , resMessage = swapFirstAndSecondPerson reminder
               }
 
-        respond $ name <> " reminder set."
-        addReminder reminders name resp Once reminderTime
+        addReminder reminders rName resp Once reminderTime
+        respond $ name <> " reminder set" <> (if rName == name then "" else " for " <> rName) <> "."
 
     addRoute
       ( pBotName <..> pS "show reminders" <+> pRest )
@@ -66,7 +68,7 @@ routes = do
 
         let formattedTime t = T.pack $ formatTime defaultTimeLocale "%H:%M %d/%m/%Y" (utcToLocalTime tz t)
             reminderStr = foldl' foldfn "/quote " (zip [1..] myReminders)
-            foldfn txt (i, Reminder{ reminderText = MessageResponse{..}, reminderTimes = (t:_) }) =
+            foldfn txt (i, Reminder{ reminderText = MessageResponse{..}, reminderTime = t }) =
                 txt <> (T.pack (show i)) <> ". remember to " <> resMessage
                     <> " (next is " <> formattedTime t <> ")\r\n"
 
@@ -174,7 +176,7 @@ callback reminders read write = do
                , rsReminders = reminders
                }
 
-        case runRoutes routes routesInput of
+        forkIO $ case runRoutes routes routesInput of
             Just m -> doWithRouteState m rs
             Nothing -> return ()
 

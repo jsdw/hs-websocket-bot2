@@ -1,6 +1,5 @@
 module Internal.Channel (
-    makeChan,
-    makeExpiringChan
+    makeChan
 ) where
 
 import Control.Concurrent
@@ -19,25 +18,3 @@ makeChan = liftIO $ do
             if b then putMVar mv a
                  else modifyMVar_ mv (\_ -> return a)
     return (reader, writer)
-
-makeExpiringChan :: MonadIO m => Int -> m (IO a, a -> IO ())
-makeExpiringChan timeout = liftIO $ do
-
-    (reader, writer) <- makeChan
-    tid <- newEmptyMVar
-
-    let killTimer = do
-            bEmpty <- isEmptyMVar tid
-            if not bEmpty
-                then takeMVar tid >>= killThread
-                else return ()
-
-        doTimer = do
-            killTimer
-            ntid <- forkIO $ void $ threadDelay timeout >> reader
-            putMVar tid ntid
-
-        writer' a = writer a >> doTimer
-        reader' = killTimer >> reader
-
-    return (reader', writer')

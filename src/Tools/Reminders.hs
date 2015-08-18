@@ -25,14 +25,16 @@ import           Control.Concurrent
 import           Control.Applicative
 import           Data.Foldable
 import           Data.Time
+import           Data.Maybe
 import qualified Data.Text                  as T
 import qualified Data.List                  as L
-import           Data.Aeson                 (FromJSON, ToJSON, encode, decode)
-import           Control.Monad              (forever, void)
+import           Data.Aeson
+import           Control.Monad
 import           Control.Monad.Trans        (MonadIO, liftIO)
 import qualified Data.Map                   as M
 
 type ReminderPerson = T.Text
+type ReminderMap rem = M.Map ReminderPerson [Reminder rem]
 
 data ReminderInterval
     = Once
@@ -48,14 +50,14 @@ instance FromJSON ReminderInterval
 data Reminder rem = Reminder
     { reminderText :: rem
     , reminderInterval :: ReminderInterval
-    , reminderTimes :: [UTCTime]
+    , reminderTime :: UTCTime
     } deriving (Show, Eq, Generic)
 
-instance ToJSON rem => ToJSON (Reminder rem)
-instance FromJSON rem => FromJSON (Reminder rem)
+instance ToJSON rem => ToJSON (Reminder rem) where
+instance FromJSON rem => FromJSON (Reminder rem) where
 
 instance Eq rem => Ord (Reminder rem) where
-    compare Reminder{ reminderTimes = (t1:_) } Reminder{ reminderTimes = (t2:_) } = compare t1 t2
+    compare Reminder{ reminderTime = t1 } Reminder{ reminderTime = t2 } = compare t1 t2
 
 data ReminderOpts = ReminderOpts
     { roFilename :: Maybe String -- persist, and if so, what file?
@@ -65,94 +67,6 @@ mkDefaultReminderOpts :: String -> ReminderOpts
 mkDefaultReminderOpts name = ReminderOpts
     { roFilename = Just name
     }
-
---
--- This is how we obtain a reminders map to work with. it handles
--- the persistance and handles firing and removing reminders as
--- they occur
---
-loadReminders :: (Eq rem, ToJSON rem, FromJSON rem) => MonadIO m => ReminderOpts -> m (Reminders rem)
-loadReminders ReminderOpts{..} = liftIO $ do
-
-    -- create reminders:
-    rs@Reminders{..} <- Reminders
-                 <$> newMVar M.empty
-                 <*> newMVar []
-
-    -- persist them:
-    case roFilename of
-        Nothing -> return ()
-        Just n -> void $ persistMVar (mkDefaultPersistOpts n) reminders
-
-    -- kick off loop to fire them off as necessary:
-    forkIO $ forever $ manager rs
-
-    return rs
-
-  where
-    -- spins up threads for any reminders approaching
-    -- being done (or done already!) which sleep the remainder
-    -- of the time and then call the subscribed things
-    manager :: Reminders rem -> IO ()
-    manager Reminders{..} = do
-
-        callbacks <- readMVar subscribed
-        tNow <- getCurrentTime
-
-        modifyMVar_ reminders $ \rmap -> do
-            let (msgts, newmap) = updateReminderMap tNow rmap
-            fireCallbacks callbacks msgts
-            return newmap
-
-        threadDelay 1000000
-        return ()
-
-    -- update reminder map
-    updateReminderMap :: UTCTime ->
-                         M.Map ReminderPerson [Reminder rem] ->
-                         ([(ReminderPerson, rem, NominalDiffTime)], M.Map ReminderPerson [Reminder rem])
-    updateReminderMap tNow rmap = M.foldlWithKey' fn ([], M.empty) rmap
-      where
-        fn (outinfo,rmap) name rs =
-          let (newoutinfo,newrs) = updateReminders tNow name rs
-          in (newoutinfo, M.insert name newrs rmap)
-
-    -- update list of reminders, accumulating (name,text,time) along the way
-    updateReminders :: UTCTime ->
-                       ReminderPerson ->
-                       [Reminder rem] ->
-                       ([(ReminderPerson, rem, NominalDiffTime)], [Reminder rem])
-    updateReminders tNow name rs = foldr fn ([],[]) rs
-      where
-        fn r (outinfo,outrs) = (newoutinfo, newoutrs)
-          where
-            (mT, mR) = updateReminder tNow r
-            newoutinfo = case mT of
-                Nothing -> outinfo
-                Just t -> (name, reminderText r, t):outinfo
-            newoutrs = case mR of
-                Nothing -> outrs
-                Just rem -> rem:outrs
-
-    -- remove closest time if necessaary
-    updateReminder :: UTCTime -> Reminder rem -> (Maybe NominalDiffTime, Maybe (Reminder rem))
-    updateReminder now r@Reminder{ reminderTimes = (t:ts) } =
-        let dt = diffUTCTime t now in
-        if dt < 5
-            then (Just dt, if ts == [] then Nothing else Just r{ reminderTimes = ts })
-            else (Nothing, Just r)
-
-    -- create an IO action which fires all callbacks:
-    fireCallbacks :: [(Int,ReminderPerson -> rem -> IO ())] -> [(ReminderPerson, rem, NominalDiffTime)] -> IO ()
-    fireCallbacks cbs ms = sequence_ $ foldl' resolvecbs [] ms
-        where
-          resolvecbs as (name,txt,dt) =
-              let a = forkIO $ do
-                      threadDelay $ floor $ dt * 1000000
-                      sequence_ $ fmap (\(_,fn) -> fn name txt) cbs
-              in a:as
-
-
 
 --
 -- Add a reminder to the list with a given time, interval, message and
@@ -170,18 +84,10 @@ addReminder Reminders{..} name txt i time = liftIO $ modifyMVar_ reminders $ \rm
         newrem = Reminder
             { reminderText = txt
             , reminderInterval = i
-            , reminderTimes = addTimes i time
+            , reminderTime = time
             }
-        newmap = M.insert name (L.sort (newrem:rs)) rmap
+        newmap = M.insert name (newrem:rs) rmap
     in return newmap
-  where
-    addTimes Once    t = [t]
-    addTimes Daily   t = let times t' = t' : (times $ plusDays   1  t') in times t
-    addTimes Weekly  t = let times t' = t' : (times $ plusDays   7  t') in times t
-    addTimes Monthly t = let times t' = t' : (times $ plusMonths 1  t') in times t
-    addTimes Yearly  t = let times t' = t' : (times $ plusMonths 12 t') in times t
-    plusDays   n t = UTCTime (addDays n (utctDay t))                (utctDayTime t)
-    plusMonths n t = UTCTime (addGregorianMonthsClip n (utctDay t)) (utctDayTime t)
 
 --
 -- Get reminders for someone as a list. empty if no reminders exist. sorted
@@ -209,6 +115,92 @@ onReminder Reminders{..} fn = liftIO $ modifyMVar subscribed $ \cs ->
         offFn = modifyMVar_ subscribed (return . filter (\(id,_) -> id /= newId))
     in return (((newId,fn):cs),offFn)
 
+
+--
+-- This is how we obtain a reminders map to work with. it handles
+-- the persistance and handles firing and removing reminders as
+-- they occur
+--
+loadReminders :: forall m rem. (Eq rem, ToJSON rem, FromJSON rem) => MonadIO m => ReminderOpts -> m (Reminders rem)
+loadReminders ReminderOpts{..} = liftIO $ do
+
+    -- create reminders:
+    rs@Reminders{..} <- Reminders
+                 <$> newMVar M.empty
+                 <*> newMVar []
+
+    -- persist them:
+    case roFilename of
+        Nothing -> return ()
+        Just n -> void $ persistMVar (mkDefaultPersistOpts n) reminders
+
+    -- kick off loop to fire them off as necessary:
+    forkIO $ forever $ manager rs
+
+    return rs
+
+  where
+    -- spins up threads for any reminders approaching
+    -- being done (or done already!) which sleep the remainder
+    -- of the time and then call the subscribed things
+    manager :: Reminders rem -> IO ()
+    manager Reminders{..} = do
+        callbacks <- readMVar subscribed
+        tNow <- getCurrentTime
+        modifyMVar_ reminders $ \rmap -> do
+            let (msgts, newmap) = updateReminders tNow rmap
+            fireCallbacks callbacks msgts
+            return newmap
+        threadDelay 1000000
+        return ()
+
+    -- create an IO action which fires all callbacks:
+    fireCallbacks :: [(Int,ReminderPerson -> rem -> IO ())] -> [(ReminderPerson, rem, NominalDiffTime)] -> IO ()
+    fireCallbacks cbs ms = mapM_ resolvecbs ms
+      where
+        resolvecbs (name,txt,dt) = forkIO $ do
+            threadDelay $ floor $ dt * 1000000
+            mapM_ (\(_,fn) -> fn name txt) cbs
+
+    -- update the reminder map
+    updateReminders :: UTCTime -> ReminderMap rem -> ([(ReminderPerson, rem, NominalDiffTime)], ReminderMap rem)
+    updateReminders time rmap = M.foldlWithKey' fn ([], M.empty) rmap
+      where
+        fn (outinfo,rmap) name rs =
+            let (nextoutinfo,newrs) = getUpcomingReminders time rs
+                addName = fmap (\(dt,rem) -> (name,dt,rem))
+            in (outinfo ++ addName nextoutinfo, M.insert name newrs rmap)
+
+    -- given some list of reminders, get nearby data and filtered new rem list
+    getUpcomingReminders :: UTCTime -> [Reminder rem] -> ([(rem,NominalDiffTime)],[Reminder rem])
+    getUpcomingReminders time rs = (msgs, catMaybes newrs)
+      where
+        (msgs,newrs) = foldr fn ([],[]) rs
+        fn r@Reminder{..} (outinfo,outrs) = let dt = secondsToReminder time r in if dt < 5
+            then ((reminderText,dt):outinfo, getNextReminder r:outrs)
+            else (outinfo, Just r:outrs)
+
+    -- how long until a reminder given time t?
+    secondsToReminder :: UTCTime -> Reminder rem -> NominalDiffTime
+    secondsToReminder t Reminder{..} = diffUTCTime reminderTime t
+
+    -- generate next reminder (may be Nothing if interval is once)
+    getNextReminder :: Reminder rem -> Maybe (Reminder rem)
+    getNextReminder r@Reminder{..} = case nextTime reminderInterval reminderTime of
+        Nothing -> Nothing
+        Just nt -> Just r{ reminderTime = nt }
+
+    -- Given a time and some interval, give back the next time
+    nextTime :: ReminderInterval -> UTCTime -> Maybe UTCTime
+    nextTime i t = case i of
+        Once    -> Nothing
+        Daily   -> Just $ plusDays   1  t
+        Weekly  -> Just $ plusDays   7  t
+        Monthly -> Just $ plusMonths 1  t
+        Yearly  -> Just $ plusMonths 12 t
+      where
+        plusDays   n t = UTCTime (addDays                n (utctDay t)) (utctDayTime t)
+        plusMonths n t = UTCTime (addGregorianMonthsClip n (utctDay t)) (utctDayTime t)
 
 
 -- =======================================

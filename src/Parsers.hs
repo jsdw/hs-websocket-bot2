@@ -277,6 +277,10 @@ pIS = asciiCI
 pS :: T.Text -> Parser T.Text
 pS = string
 
+-- parse single name
+pName :: Parser T.Text
+pName = mappend <$> (string "@" <|> return "") <*> (fmap T.pack $ many1 letter)
+
 -- auto-add optional spaces between entries.
 infixl 6 <..>
 (<..>) p1 p2 = p1 <+> many' space <+> p2
