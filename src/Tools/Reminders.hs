@@ -93,8 +93,10 @@ addReminder Reminders{..} name txt i time = liftIO $ modifyMVar_ reminders $ \rm
 -- Get reminders for someone as a list. empty if no reminders exist. sorted
 -- by time, nearest first.
 --
-getReminders :: MonadIO m => Reminders rem -> ReminderPerson -> m [Reminder rem]
-getReminders Reminders{..} name = liftIO $ M.findWithDefault [] name <$> readMVar reminders
+getReminders :: (Eq rem, MonadIO m) => Reminders rem -> ReminderPerson -> m [Reminder rem]
+getReminders Reminders{..} name = liftIO $ do
+    rmap <- readMVar reminders
+    return $ L.sort $ M.findWithDefault [] name rmap
 
 --
 -- Remove a reminder for someone based on its position in the list.
