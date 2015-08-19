@@ -97,11 +97,11 @@ routes = do
 
     -- say something!
     addRoute
-        ( pBotName <..> var (pBool $ pS "slowly") <..> pS "say" <..> var (pMaybe $ pS "(" *> pWord <* pS ")" ) <..> var pRest )
+        ( pBotName <..> var (pBool $ pS "slowly") <..> pS "say" <..> var (pMaybe $ pS "(" *> pUntil (pS ")")) <..> var pRest )
         $ \beSlow mRoom message -> do
             name <- askName
             guard $ name == "@james"
-            respondWith def{ roSlow = beSlow, roRoom = mRoom } message
+            respondWith def{ roSlow = beSlow, roRoom = fmap (\(r,_) -> r) mRoom } message
 
     -- greetings!
     addRoute
