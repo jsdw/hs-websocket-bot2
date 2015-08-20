@@ -102,7 +102,7 @@ data RouteState = RouteState
     , rsName    :: T.Text
     , rsRoom    :: Maybe T.Text
     , rsReplyFn :: (MessageResponse -> IO ())
-    , rsReminders :: Reminders MessageResponse
+    , rsReminders :: Reminders (T.Text,MessageResponse)
     }
 
 type RouteStateIO = S.StateT RouteState (M.MaybeT IO)

@@ -57,6 +57,45 @@ pDecimal :: Integral a => Parser a
 pDecimal = decimal
 
 --
+-- Rel  = 10 mins
+--      | 10 hours
+--
+-- MonthName = January
+-- DayNum    = 10th
+--           | 2nd
+--           | 21st
+--
+-- Year = 2015
+--      | 15
+--
+-- MonthAndDay = MonthName DayNum
+--             | DayNum MonthName
+--
+-- Date = [MonthAndDay] [Year]
+--      | [Year] [MonthAndDay]
+--      | [Year]/07/02
+--      | 02/07/[Year]
+--
+-- Time = 10:59 am
+--      | 10:59
+--
+-- Sep1 = at | on | on the
+--
+-- DayName = Monday
+--         | Tuesday
+--
+-- Full = [Sep1] [DayName]
+--      | [Sep1] [Date] [Time]
+--      | [Sep1] [Time] [Date]
+--      | [Sep1] [DayNum]
+--      | in [Rel..]
+
+--pTime :: RoutesInput -> Parser Time.UTCTime
+--pTime RoutesInput{ routesTime = time, routesTimeZone = tz } =
+--  where
+
+
+--
 -- Parse some relative or absolute time from now and give it back
 -- as an absolute UTC time. This does all the hard work not only
 -- of parsing time but converting from relative to absolute and

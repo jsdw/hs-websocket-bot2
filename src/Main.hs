@@ -40,8 +40,8 @@ routes :: Routes (RouteStateIO ())
 routes = do
 
     addRoute
-      ( pBotName <..> pS "remind" <..> var pName <..> var pTime <..> pS "to" <..> var pRest )
-      $ \remindPerson reminderTime reminder -> do
+      ( pBotName <..> pS "remind" <..> var pName <..> var (pMaybe $ pS "(" *> pUntil (pS ")")) <..> var pTime <..> pS "to" <..> var pRest )
+      $ \remindPerson mRemindRoom reminderTime reminder -> do
 
         name      <- askName
         room      <- askRoom
@@ -50,11 +50,11 @@ routes = do
         let rName = if remindPerson == "me" then name else remindPerson
             resp = def
               { resColour = Just Red
-              , resRoom = room
+              , resRoom = fmap fst mRemindRoom <|> room
               , resMessage = swapFirstAndSecondPerson reminder
               }
 
-        addReminder reminders rName resp Once reminderTime
+        addReminder reminders name (rName,resp) Once reminderTime
         respond $ name <> " reminder set" <> (if rName == name then "" else " for " <> rName) <> "."
 
     addRoute
@@ -68,9 +68,12 @@ routes = do
 
         let formattedTime t = T.pack $ formatTime defaultTimeLocale "%H:%M %d/%m/%Y" (utcToLocalTime tz t)
             reminderStr = foldl' foldfn "/quote " (zip [1..] myReminders)
-            foldfn txt (i, Reminder{ reminderText = MessageResponse{..}, reminderTime = t }) =
-                txt <> (T.pack (show i)) <> ". remember to " <> resMessage
-                    <> " (next is " <> formattedTime t <> ")\r\n"
+            foldfn txt (i, Reminder{ reminderText = (forName,MessageResponse{..}), reminderTime = t })
+                = txt
+                <> (T.pack (show i)) <> ". "
+                <> if forName == name then "remember" else ("remind " <> forName) <> " to "
+                <> resMessage
+                <> " (next is " <> formattedTime t <> ")\n"
 
         if length myReminders == 0
             then respond $ name <> " you have no reminders"
@@ -155,7 +158,7 @@ main = do
     startServer socketSettings (callback reminders)
 
 
-callback :: Reminders MessageResponse -> IO MessageReceived -> (MessageResponse -> IO ()) -> IO ()
+callback :: Reminders (T.Text,MessageResponse) -> IO MessageReceived -> (MessageResponse -> IO ()) -> IO ()
 callback reminders read write = do
     offReminders <- handleReminders reminders write
     loop `E.finally` putStrLn "running cleanup" >> offReminders
@@ -184,9 +187,9 @@ callback reminders read write = do
 
 -- take some reminders and a function to write them
 -- out and hook it together.
-handleReminders :: Reminders MessageResponse -> (MessageResponse -> IO ()) -> IO (IO ())
+handleReminders :: Reminders (T.Text,MessageResponse) -> (MessageResponse -> IO ()) -> IO (IO ())
 handleReminders reminders write = onReminder reminders $
-    \name r@MessageResponse{..} ->
-        write r{ resMessage = "BZZT! " <> name <> " remember to " <> resMessage }
+    \fromName (forName,r@MessageResponse{..}) ->
+        write r{ resMessage = "BZZT! " <> forName <> " remember to " <> resMessage }
 
 

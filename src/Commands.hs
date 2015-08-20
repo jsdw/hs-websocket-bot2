@@ -50,7 +50,7 @@ respond out = do
         }
 
 -- get reminders object:
-askReminders :: RouteStateIO (Reminders MessageResponse)
+askReminders :: RouteStateIO (Reminders (T.Text,MessageResponse))
 askReminders = rsReminders <$> S.get
 
 -- get the full message:
