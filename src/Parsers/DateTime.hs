@@ -5,19 +5,19 @@ module Parsers.DateTime (
 -- Basic parsing of arbitrary english datetime strings
 -- ===================================================
 --
--- DAYNAME   = Monday | Tuesday | Wednesday | Mon | Tue(s) | Wed(s) ..
+-- DAYNAME   = Monday(s) | Tuesday(s) | Wednesday(s) | Mon(s) | Tue(s) | Wed(s) ..
 -- MONTHNAME = January | Febuary | March | ..
--- TIME      = 10pm | 10:53 | 10:53pm | 10:52:12 | 10:52:12pm
+-- TIME      = 10 TIMESUFFIX | 10:53 (TIMESUFFIX) | 10:52:12 (TIMESUFFIX)
 -- MONTHDAY  = 1st | 2nd | 3rd | ..
 -- YEAR      = 2015
 -- YMD       = 2015/12/14 | 2015-12-14
 -- DMY       = 12/04/2015 | 12-04-2015
--- RELATIVE  = RELVALUE minutes | RELVALUE hours | RELVALUE weeks
--- RELDAY    = next DAYNAME
+-- RELATIVE  = RELVALUE minute(s) | RELVALUE hour(s) | RELVALUE week(s) | RELVALUE DAYNAME
 -- INTERVAL  = daily | weekly | monthly | yearly
 --
--- FILLERS   = the | of | on | at | in | and | ,
--- RELVALUE  = next | 1 | 2 | 3 | ..
+-- TIMESUFFIX = am | pm | oclock | o'clock
+-- FILLERS    = the | of | on | at | in | and | ,
+-- RELVALUE   = next | 1 | 2 | 3 | ..
 --
 -- examples:
 -- =========
