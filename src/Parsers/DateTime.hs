@@ -37,8 +37,101 @@ module Parsers.DateTime (
 -- 3 weeks on tuesday at 10pm
 -- (move forward by 3 weeks, then move to the next tuesday, then set time to 10pm)
 --
-import           Data.Time            as Time
-import           Data.Attoparsec.Text
+import qualified Data.Time            as Time
 import qualified Data.Text            as T
+import qualified Data.List            as L
+import           Data.Attoparsec.Text
 import           Control.Applicative
 import           Control.Monad
+
+
+
+parseTime :: Time.UTCTime -> Parser Time.UTCTime
+parseTime time = do
+
+
+    return time
+
+
+--
+-- Auxiliary helpers:
+--
+
+days =
+    [ (["mon", "monday"], 1)
+    , (["tue", "tues", "tuesday"], 2)
+    , (["wed", "weds", "wednesday"], 3)
+    , (["thu", "thur", "thurs", "thursday"], 4)
+    , (["fri", "friday"], 5)
+    , (["sat", "saturday"], 6)
+    , (["sun", "sunday"], 7)
+    ]
+
+months =
+    [ (["jan", "january"], 1)
+    , (["feb", "febuary"], 2)
+    , (["mar", "march"], 3)
+    , (["apr", "april"], 4)
+    , (["may"], 5)
+    , (["jun", "june"], 6)
+    , (["jul", "july"], 7)
+    , (["aug", "august"], 8)
+    , (["sep", "sept", "september"], 9)
+    , (["oct", "october"], 10)
+    , (["nov", "november"], 11)
+    , (["dec", "december"], 12)
+    ]
+
+relSuffixMultiplier num =
+    --relative to ms
+    [ (["ms", "milisecond", "miliseconds"] , (0,0,0, round $ num         ) )
+    , (["s", "secs", "second", "seconds"]  , (0,0,0, round $ num*seconds ) )
+    , (["h", "hour", "hours"]              , (0,0,0, round $ num*hours   ) )
+    , (["m", "min", "mins", "minutes"]     , (0,0,0, round $ num*minutes ) )
+    --relative to days
+    , (["d", "day", "days"]                , (0,0, round $ num,       0) )
+    , (["w", "week", "weeks"]              , (0,0, round $ num*weeks, 0) )
+    --relative to months
+    , (["month", "months"]                 , (0, round $ num, 0,0) )
+    --relative to years
+    , (["y", "year", "years"]              , (round $ num,         0,0,0) )
+    , (["decade", "decades"]               , (round $ num*decades, 0,0,0) )
+    , (["eon", "eons"]                     , (round $ num*eons,    0,0,0) )
+    ]
+  where
+    seconds     = 1000
+    minutes     = 60 * seconds
+    hours       = 60 * minutes
+    --relative to days
+    weeks       = 7
+    --relative to years
+    decades     = 10
+    eons        = 1000
+
+relTimeAsTuple :: Parser (Integral,Integral,Integral,Integral)
+relTimeAsTuple = do
+    num <- double
+    let (y,m,d,ms) = getFrom (relSuffixMultiplier num)
+    return (y+y',m+m',d+d',ms+ms')
+
+dayNameAsInt :: Parser Int
+dayNameAsInt = do
+    word <- many1 letter
+    case getFrom days (T.pack word) of
+        Just n  -> return n
+        Nothing -> fail "Could not match day :("
+
+monthNameAsInt :: Parser Int
+monthNameAsInt = do
+    word <- many1 letter
+    case getFrom months (T.pack word) of
+        Just n  -> return n
+        Nothing -> fail "Could not match month :("
+
+getFrom :: [([T.Text],a)] -> T.Text -> Maybe a
+getFrom vals word =
+    let get ((ds,val):rest) w = if L.any (== w) ds then Just val else get rest w
+        get [] w = Nothing
+    in get vals (T.toLower word)
+
+
