@@ -1,6 +1,6 @@
 
 name:                JamesBot2
-version:             0.1.0.0
+version:             0.2.0.0
 synopsis:            A chat bot
 -- description:
 homepage:            unbui.lt
@@ -22,6 +22,7 @@ executable JamesBot
                        "-with-rtsopts=-N -g1"
   default-extensions:  FlexibleInstances,
                        OverloadedStrings,
+                       PatternSynonyms,
                        ScopedTypeVariables,
                        RecordWildCards,
                        ViewPatterns,

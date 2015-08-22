@@ -5,7 +5,6 @@ module Commands (
 
 import Internal.Routing
 import Internal.Types
-import Parsers          (RelativeTime(..))
 import Tools.Reminders
 
 import           Control.Applicative
