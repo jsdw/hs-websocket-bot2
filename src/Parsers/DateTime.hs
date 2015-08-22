@@ -63,7 +63,7 @@ parseTime zonedTime = loop zonedTime
 -- Auxiliary helpers:
 --
 
-fillers = ["the","of","on","at","in","and",",","+"]
+fillers = ["on the", "the","of","on","at","in","and",",","+"]
 
 numbers =
     [ ("one",   1)
@@ -148,6 +148,11 @@ timeSuffix =
     , (["am", "oclock", "o'clock"], 0)
     ]
 
+relTimeSuffix =
+    [ "from now"
+    , "away"
+    ]
+
 timeSep :: Parser ()
 timeSep = skipSpace >> ( (choice (fmap string fillers) >> skipSpace) <|> return () )
 
@@ -168,13 +173,14 @@ yymmdd (ZonedTime (YMD y m d) tod tz) = do
 
 relTime :: Time.ZonedTime -> Parser Time.ZonedTime
 relTime z@(ZonedTime ymd@(YMD y m d) tod tz) = do
-    (num :: Integer) <- decimal
-       <|> basicNumber
+    (num :: Integer) <- basicNumber
        <|> (string "next" >> return 1)
        <|> (string "this" >> return 0)
        <|> return 0
     skipSpace
     suffix <- fmap T.pack (many1 letter)
+    skipSpace
+    choice endings <|> return ()
 
     case suffix of
         (getFrom months          -> Just val) -> return $ relMonth   num val
@@ -182,23 +188,22 @@ relTime z@(ZonedTime ymd@(YMD y m d) tod tz) = do
         (getFrom (toRelTime num) -> Just val) -> return $ relTime    val
         _                                     -> fail "Could not parse relative time"
   where
+    endings = fmap (\s -> string s >> return ()) relTimeSuffix
     relTime v = addToZonedTime z v
     relWeekDay num v =
         let wd = toInteger w where (_,_,w) = Time.toWeekDate ymd
             plusDays = case num of
                 0 -> if v < wd then 7 - (wd - v) else (v - wd)
-                _ -> (7 - wd) + (num * v)
+                _ -> (7 - wd) + (7 * (num-1)) + v
         in addToZonedTime z (RelTime 0 0 plusDays 0)
     relMonth num v =
         let m' = toInteger m
             plusMonths = case num of
                 0 -> if v < m' then 12 - (m' - v) else (v - m')
-                _ -> (12 - m') + (num * 12)
+                -- add enough to get to end of year from here,
+                -- then add num-1 more years, then add val.
+                _ -> (12 - m') + (12 * (num-1)) + v
         in addToZonedTime z (RelTime 0 plusMonths 0 0)
-    basicNumber =
-        let pick from = choice $ fmap (\(s,v) -> string s >> return v) from
-            loop n = skipSpace >> ((fmap (n*) (pick numberMultipliers) >>= loop) <|> return n)
-        in pick numbers >>= loop
 
 year :: Time.ZonedTime -> Parser Time.ZonedTime
 year (ZonedTime (YMD y m d) tod tz) = do
@@ -264,6 +269,12 @@ getFrom vals word =
     let get ((ds,val):rest) w = if L.any (== w) ds then Just val else get rest w
         get [] w = Nothing
     in get vals (T.toLower word)
+
+basicNumber :: Parser Integer
+basicNumber =
+    let pick from = choice $ fmap (\(s,v) -> string s >> return v) from
+        loop n = skipSpace >> ((fmap (n*) (pick numberMultipliers) >>= loop) <|> return n)
+    in (decimal <|> pick numbers) >>= loop
 
 addToZonedTime :: Time.ZonedTime -> RelTime -> Time.ZonedTime
 addToZonedTime (ZonedTime day tod tz) RelTime{..} =

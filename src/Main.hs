@@ -96,7 +96,7 @@ routes = do
     -- a reminders reminder
     addRoute
       ( pBotName <..> pS "remind" <+> pRest )
-      $ respond "Want a reminder? remind me TIME to REMINDER"
+      $ respond "Want a reminder? remind {PERSON|me} TIME {(ROOM)|} to REMINDER"
 
     -- say something!
     addRoute
