@@ -71,7 +71,8 @@ routes = do
             foldfn txt (i, Reminder{ reminderText = (forName,MessageResponse{..}), reminderTime = t })
                 = txt
                 <> (T.pack (show i)) <> ". "
-                <> if forName == name then "remember" else ("remind " <> forName) <> " to "
+                <> (if forName == name then "remember" else ("remind " <> forName))
+                <> " to "
                 <> resMessage
                 <> " (next is " <> formattedTime t <> ")\n"
 
