@@ -40,7 +40,7 @@ routes :: Routes (RouteStateIO ())
 routes = do
 
     addRoute
-      ( pBotName <..> pS "remind" <..> var pName <..> var (pMaybe $ pS "(" *> pUntil (pS ")")) <..> var pTime <..> pS "to" <..> var pRest )
+      ( pBotName <..> pS "remind" <..> var pName <..> var (pMaybe $ pS "(" *> pUntil (pS ")")) <..> var pTime <..> var pRest )
       $ \remindPerson mRemindRoom reminderTime reminder -> do
 
         name      <- askName
@@ -191,6 +191,6 @@ callback reminders read write = do
 handleReminders :: Reminders (T.Text,MessageResponse) -> (MessageResponse -> IO ()) -> IO (IO ())
 handleReminders reminders write = onReminder reminders $
     \fromName (forName,r@MessageResponse{..}) ->
-        write r{ resMessage = "BZZT! " <> forName <> " remember to " <> resMessage }
+        write r{ resMessage = "BZZT! " <> forName <> " remember " <> resMessage }
 
 

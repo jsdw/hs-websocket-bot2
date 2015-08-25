@@ -26,6 +26,8 @@ swapFirstAndSecondPerson txt = finalize $ foldl' folder "" (tokenize txt)
       where
         fTos =
             [ ("my","your")
+            , ("his","your")
+            , ("her","your")
             , ("'m","'re")
             , ("i","you")
             , ("me","you")
