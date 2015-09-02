@@ -40,8 +40,8 @@ routes :: Routes (RouteStateIO ())
 routes = do
 
     addRoute
-      ( pBotName <..> pS "remind" <..> var pName <..> var (pMaybe $ pS "(" *> pUntil (pS ")")) <..> var pTime <..> var pRest )
-      $ \remindPerson mRemindRoom reminderTime reminder -> do
+      ( pBotName <..> pS "remind" <..> var pName <..> var (pMaybe $ pS "(" *> pUntil (pS ")")) <..> var pIntervalTime <..> var pRest )
+      $ \remindPerson mRemindRoom (interval, time) reminder -> do
 
         name      <- askName
         room      <- askRoom
@@ -54,7 +54,7 @@ routes = do
               , resMessage = swapFirstAndSecondPerson reminder
               }
 
-        addReminder reminders name (rName,resp) Once reminderTime
+        addReminder reminders name (rName,resp) interval time
         respond $ name <> " reminder set" <> (if rName == name then "" else " for " <> rName) <> "."
 
     addRoute
@@ -68,12 +68,12 @@ routes = do
 
         let formattedTime t = T.pack $ formatTime defaultTimeLocale "%H:%M %d/%m/%Y" (utcToLocalTime tz t)
             reminderStr = foldl' foldfn "/quote " (zip [1..] myReminders)
-            foldfn txt (i, Reminder{ reminderText = (forName,MessageResponse{..}), reminderTime = t })
+            foldfn txt (n, Reminder{ reminderText = (forName,MessageResponse{..}), reminderTime = t, reminderInterval = i })
                 = txt
-                <> (T.pack (show i)) <> ". "
+                <> (T.pack (show n)) <> ". "
                 <> (if forName == name then "remember" else ("remind " <> forName))
                 <> " " <> resMessage
-                <> " (next is " <> formattedTime t <> ")\n"
+                <> " (" <> T.pack (show i) <> " at " <> formattedTime t <> ")\n"
 
         if length myReminders == 0
             then respond $ name <> " you have no reminders"

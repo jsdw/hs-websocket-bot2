@@ -2,7 +2,7 @@
 
 module Tools.Reminders (
 
-    ReminderInterval(..),
+    DT.Interval(..),
     Reminder(..),
     ReminderOpts(..),
     Reminders,
@@ -20,6 +20,9 @@ module Tools.Reminders (
 -- for auto JSON handling:
 import           GHC.Generics
 
+-- for our Interval type:
+import           Parsers.DateTime           as DT
+
 import           Tools.Persist
 import           Control.Concurrent
 import           Control.Applicative
@@ -36,25 +39,17 @@ import qualified Data.Map                   as M
 type ReminderPerson = T.Text
 type ReminderMap rem = M.Map ReminderPerson [Reminder rem]
 
-data ReminderInterval
-    = Once
-    | Daily
-    | Weekly
-    | Monthly
-    | Yearly
-    deriving (Ord, Eq, Show, Generic)
-
-instance ToJSON ReminderInterval
-instance FromJSON ReminderInterval
-
 data Reminder rem = Reminder
     { reminderText :: rem
-    , reminderInterval :: ReminderInterval
+    , reminderInterval :: DT.Interval
     , reminderTime :: UTCTime
     } deriving (Show, Eq, Generic)
 
-instance ToJSON rem => ToJSON (Reminder rem) where
-instance FromJSON rem => FromJSON (Reminder rem) where
+instance ToJSON rem => ToJSON (Reminder rem)
+instance FromJSON rem => FromJSON (Reminder rem)
+
+instance ToJSON DT.Interval
+instance FromJSON DT.Interval
 
 instance Eq rem => Ord (Reminder rem) where
     compare Reminder{ reminderTime = t1 } Reminder{ reminderTime = t2 } = compare t1 t2
@@ -76,7 +71,7 @@ addReminder :: (Eq rem, MonadIO m) =>
                Reminders rem       -> -- opaque reminders object (rem is reminder data)
                ReminderPerson      -> -- person to remind
                rem                 -> -- reminder text (or other data)
-               ReminderInterval    -> -- how often to remind
+               DT.Interval         -> -- how often to remind
                UTCTime             -> -- when to remind
                m ()
 addReminder Reminders{..} name txt i time = liftIO $ modifyMVar_ reminders $ \rmap ->
@@ -193,7 +188,7 @@ loadReminders ReminderOpts{..} = liftIO $ do
         Just nt -> Just r{ reminderTime = nt }
 
     -- Given a time and some interval, give back the next time
-    nextTime :: ReminderInterval -> UTCTime -> Maybe UTCTime
+    nextTime :: DT.Interval -> UTCTime -> Maybe UTCTime
     nextTime i t = case i of
         Once    -> Nothing
         Daily   -> Just $ plusDays   1  t

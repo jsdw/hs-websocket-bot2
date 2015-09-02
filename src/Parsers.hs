@@ -68,6 +68,11 @@ pTime RoutesInput{ routesTime = t, routesTimeZone = tz } = do
     (Time.ZonedTime newLocalTime _) <- DT.parseTime $ Time.ZonedTime (Time.utcToLocalTime tz t) tz
     return $ Time.localTimeToUTC tz newLocalTime
 
+pIntervalTime :: RoutesInput -> Parser (DT.Interval, Time.UTCTime)
+pIntervalTime RoutesInput{ routesTime = t, routesTimeZone = tz } = do
+    (interval, Time.ZonedTime newLocalTime _) <- DT.intervalTime $ Time.ZonedTime (Time.utcToLocalTime tz t) tz
+    return $ (interval, Time.localTimeToUTC tz newLocalTime)
+
 -- parse common greetings
 pGreetings :: Parser T.Text
 pGreetings = pIS "hello"

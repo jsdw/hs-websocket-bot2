@@ -1,5 +1,9 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 module Parsers.DateTime (
-    parseTime
+    parseTime,
+    intervalTime,
+    Interval(..)
 ) where
 --
 -- Basic parsing of arbitrary english datetime strings
@@ -37,16 +41,20 @@ module Parsers.DateTime (
 -- 3 weeks on tuesday at 10pm
 -- (move forward by 3 weeks, then move to the next tuesday, then set time to 10pm)
 --
+import Prelude hiding (takeWhile)
+
 import qualified Data.Time                   as Time
 import qualified Data.Time.Calendar.WeekDate as Time
 import qualified Data.Text                   as T
 import qualified Data.List                   as L
+import           Data.Monoid                 ((<>))
 import           Data.Attoparsec.Text
 import           Control.Applicative
 import           Control.Monad
+import           GHC.Generics
 
 --
--- Glue it all together here in our single exposed function
+-- Glue it all together here in exposed functions:
 --
 
 parseTime :: Time.ZonedTime -> Parser Time.ZonedTime
@@ -59,9 +67,35 @@ parseTime zonedTime = loop zonedTime
         timeSep
         loop newtime <|> return newtime
 
+intervalTime :: Time.ZonedTime -> Parser (Interval, Time.ZonedTime)
+intervalTime t = choice
+    [ (,)             <$> getInterval <*> parseTime t
+    , (\t i -> (i,t)) <$> parseTime t <*> (getInterval <|> return Once)
+    ]
+
+data Interval
+    = Once
+    | Daily
+    | Weekly
+    | Monthly
+    | Yearly
+    deriving (Ord, Eq, Show, Generic)
+
 --
 -- Auxiliary helpers:
 --
+
+intervals = all <$> prefixes <*> middles <*> suffixes
+  where
+    all p (m,i) s = (p <> m <> s, i)
+    prefixes = ["every ", "each ", ""]
+    suffixes = ["ly", ""]
+    middles = [ ("day",   Daily)
+              , ("dai",   Daily)
+              , ("week",  Weekly)
+              , ("Month", Monthly)
+              , ("Year",  Yearly)
+              ]
 
 fillers = ["on the", "the","of","on","at","in","and",",","+"]
 
@@ -238,8 +272,8 @@ hms (ZonedTime day tod tz) = hoursonly <|> all
         guard $ m >= 0 && m < 60 && s >= 0 && s < 60 && h >= 0 && h < 24
         return $ ZonedTime day (ToD h m (fromIntegral s)) tz
     suffix = do
-        word <- many1 letter
-        case getFrom timeSuffix (T.pack word) of
+        word <- takeWhile $ inClass "a-zA-Z'"
+        case getFrom timeSuffix word of
             Just val -> return val
             Nothing  -> fail "not a valid time suffix"
     sep = char ':' <|> char '.'
@@ -263,6 +297,9 @@ monthDay (ZonedTime (YMD y m d) tod tz) = do
         (suf [3,23]    "rd" -> Just o) -> o
         (suf [1..31]   "th" -> Just o) -> o
         _                              -> f
+
+getInterval :: Parser Interval
+getInterval = choice $ fmap (\(s,i) -> asciiCI s >> return i) intervals
 
 getFrom :: [([T.Text],a)] -> T.Text -> Maybe a
 getFrom vals word =
