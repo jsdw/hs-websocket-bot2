@@ -72,8 +72,7 @@ routes = do
                 = txt
                 <> (T.pack (show i)) <> ". "
                 <> (if forName == name then "remember" else ("remind " <> forName))
-                <> " to "
-                <> resMessage
+                <> " " <> resMessage
                 <> " (next is " <> formattedTime t <> ")\n"
 
         if length myReminders == 0
