@@ -1,9 +1,8 @@
-{-# LANGUAGE DeriveGeneric #-}
-
 module Parsers.DateTime (
     parseTime,
     intervalTime,
-    Interval(..)
+    Interval(..),
+    Weekday(..)
 ) where
 --
 -- Basic parsing of arbitrary english datetime strings
@@ -51,7 +50,6 @@ import           Data.Monoid                 ((<>))
 import           Data.Attoparsec.Text
 import           Control.Applicative
 import           Control.Monad
-import           GHC.Generics
 
 --
 -- Glue it all together here in exposed functions:
@@ -75,27 +73,55 @@ intervalTime t = choice
 
 data Interval
     = Once
+    | Days [Weekday]
     | Daily
     | Weekly
     | Monthly
     | Yearly
-    deriving (Ord, Eq, Show, Generic)
+    deriving (Ord, Eq, Show)
+
+data Weekday
+    = Monday
+    | Tuesday
+    | Wednesday
+    | Thursday
+    | Friday
+    | Saturday
+    | Sunday
+    deriving (Ord, Eq, Show)
+
+-- align weekdays with ints provided
+-- back from time library:
+instance Enum Weekday where
+    fromEnum d = case d of
+      Monday    -> 1
+      Tuesday   -> 2
+      Wednesday -> 3
+      Thursday  -> 4
+      Friday    -> 5
+      Saturday  -> 6
+      Sunday    -> 7
+    toEnum i = case i of
+      1 -> Monday
+      2 -> Tuesday
+      3 -> Wednesday
+      4 -> Thursday
+      5 -> Friday
+      6 -> Saturday
+      _ -> Sunday
 
 --
 -- Auxiliary helpers:
 --
 
-intervals = all <$> prefixes <*> middles <*> suffixes
-  where
-    all p (m,i) s = (p <> m <> s, i)
-    prefixes = ["every ", "each ", ""]
-    suffixes = ["ly", ""]
-    middles = [ ("day",   Daily)
-              , ("dai",   Daily)
-              , ("week",  Weekly)
-              , ("Month", Monthly)
-              , ("Year",  Yearly)
-              ]
+intervalPrefixes = ["every", "each"]
+intervalDaySeparators = ["and", ",", "+"]
+intervals =
+    [ (["day", "daily"],     Daily)
+    , (["week", "weekly"],   Weekly)
+    , (["month", "monthly"], Monthly)
+    , (["year", "yearly"],   Yearly)
+    ]
 
 fillers = ["on the", "the","of","on","at","in","and",",","+"]
 
@@ -126,13 +152,13 @@ numberMultipliers =
     trillion = billion  * thousand
 
 days =
-    [ (["mon", "monday", "mondays"],                      1)
-    , (["tue", "tues", "tuesday", "tuesdays"],            2)
-    , (["wed", "weds", "wednesday", "wednesdays"],        3)
-    , (["thu", "thur", "thurs", "thursday", "thursdays"], 4)
-    , (["fri", "fris", "friday", "fridays"],              5)
-    , (["sat", "sats", "saturday", "saturdays"],          6)
-    , (["sun", "suns", "sunday", "sundays"],              7)
+    [ (["mon", "monday", "mondays"],                      Monday   )
+    , (["tue", "tues", "tuesday", "tuesdays"],            Tuesday  )
+    , (["wed", "weds", "wednesday", "wednesdays"],        Wednesday)
+    , (["thu", "thur", "thurs", "thursday", "thursdays"], Thursday )
+    , (["fri", "fris", "friday", "fridays"],              Friday   )
+    , (["sat", "sats", "saturday", "saturdays"],          Saturday )
+    , (["sun", "suns", "sunday", "sundays"],              Sunday   )
     ]
 
 months =
@@ -218,7 +244,7 @@ relTime z@(ZonedTime ymd@(YMD y m d) tod tz) = do
 
     case suffix of
         (getFrom months          -> Just val) -> return $ relMonth   num val
-        (getFrom days            -> Just val) -> return $ relWeekDay num val
+        (getFrom days            -> Just val) -> return $ relWeekDay num (fromIntegral $ fromEnum val)
         (getFrom (toRelTime num) -> Just val) -> return $ relTime    val
         _                                     -> fail "Could not parse relative time"
   where
@@ -286,8 +312,8 @@ monthDay (ZonedTime (YMD y m d) tod tz) = do
 
     let f = fail "not a month day :("
         newzt d = (ZonedTime (toYMD y m d) tod tz)
-        suf days val day =
-            let m = L.any (== day) days
+        suf monthDays val day =
+            let m = L.any (== day) monthDays
             in if m then (if suffix == val then Just (return $ newzt day) else Just f)
                     else Nothing
 
@@ -299,7 +325,27 @@ monthDay (ZonedTime (YMD y m d) tod tz) = do
         _                              -> f
 
 getInterval :: Parser Interval
-getInterval = choice $ fmap (\(s,i) -> asciiCI s >> return i) intervals
+getInterval = nly <|> certainDays
+  where
+    nly = do
+        choice (fmap (void . string) intervalPrefixes) <|> return ()
+        skipSpace
+        notDay
+    certainDays = do
+        choice (fmap string intervalPrefixes)
+        skipSpace
+        ds <- sepBy1 day ((skipSpace >> choice (fmap string intervalDaySeparators) >> skipSpace) <|> skipSpace)
+        return $ Days ds
+    notDay = do
+        word <- takeWhile $ inClass "a-zA-Z'"
+        case getFrom intervals word of
+            Nothing -> fail "expected nonday interval"
+            Just i -> return i
+    day = do
+        word <- takeWhile $ inClass "a-zA-Z'"
+        case getFrom days word of
+            Nothing -> fail "interval day expected"
+            Just d  -> return d
 
 getFrom :: [([T.Text],a)] -> T.Text -> Maybe a
 getFrom vals word =

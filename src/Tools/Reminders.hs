@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric, StandaloneDeriving #-}
 
 module Tools.Reminders (
 
@@ -21,20 +21,21 @@ module Tools.Reminders (
 import           GHC.Generics
 
 -- for our Interval type:
-import           Parsers.DateTime           as DT
+import           Parsers.DateTime            as DT
 
 import           Tools.Persist
 import           Control.Concurrent
 import           Control.Applicative
 import           Data.Foldable
 import           Data.Time
+import           Data.Time.Calendar.WeekDate (toWeekDate)
 import           Data.Maybe
-import qualified Data.Text                  as T
-import qualified Data.List                  as L
+import qualified Data.Text                   as T
+import qualified Data.List                   as L
 import           Data.Aeson
 import           Control.Monad
-import           Control.Monad.Trans        (MonadIO, liftIO)
-import qualified Data.Map                   as M
+import           Control.Monad.Trans         (MonadIO, liftIO)
+import qualified Data.Map                    as M
 
 type ReminderPerson = T.Text
 type ReminderMap rem = M.Map ReminderPerson [Reminder rem]
@@ -45,8 +46,14 @@ data Reminder rem = Reminder
     , reminderTime :: UTCTime
     } deriving (Show, Eq, Generic)
 
+deriving instance Generic DT.Interval
+deriving instance Generic DT.Weekday
+
 instance ToJSON rem => ToJSON (Reminder rem)
 instance FromJSON rem => FromJSON (Reminder rem)
+
+instance ToJSON DT.Weekday
+instance FromJSON DT.Weekday
 
 instance ToJSON DT.Interval
 instance FromJSON DT.Interval
@@ -191,6 +198,8 @@ loadReminders ReminderOpts{..} = liftIO $ do
     nextTime :: DT.Interval -> UTCTime -> Maybe UTCTime
     nextTime i t = case i of
         Once    -> Nothing
+        Days [] -> Nothing
+        Days ds -> Just $ nextDay    ds t
         Daily   -> Just $ plusDays   1  t
         Weekly  -> Just $ plusDays   7  t
         Monthly -> Just $ plusMonths 1  t
@@ -198,7 +207,11 @@ loadReminders ReminderOpts{..} = liftIO $ do
       where
         plusDays   n t = UTCTime (addDays                n (utctDay t)) (utctDayTime t)
         plusMonths n t = UTCTime (addGregorianMonthsClip n (utctDay t)) (utctDayTime t)
-
+        nextDay   ds t = plusDays (L.minimum distances) t
+          where
+            distances = fmap (fromIntegral . distance weekDay . fromEnum) ds
+            distance from to = if from > to then to - (from - 7) else to - from
+            weekDay = let (_,_,wd) = toWeekDate (utctDay t) in wd
 
 -- =======================================
 -- | Don't export constructors for this. |
