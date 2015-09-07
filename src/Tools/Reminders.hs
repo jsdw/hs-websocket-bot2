@@ -210,7 +210,10 @@ loadReminders ReminderOpts{..} = liftIO $ do
         nextDay   ds t = plusDays (L.minimum distances) t
           where
             distances = fmap (fromIntegral . distance weekDay . fromEnum) ds
-            distance from to = if from > to then to - (from - 7) else to - from
+            distance from to
+                | from > to  = distance (from - 7) to
+                | from == to = 7
+                | otherwise  = to - from
             weekDay = let (_,_,wd) = toWeekDate (utctDay t) in wd
 
 -- =======================================
