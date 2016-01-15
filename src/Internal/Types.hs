@@ -28,9 +28,9 @@ import qualified Control.Monad.State        as S
 -- parsing fails we won't try to respond
 --
 data MessageReceived = MessageReceived
-    { rName :: T.Text
+    { rName    :: T.Text
     , rMessage :: T.Text
-    , rRoom :: Maybe T.Text
+    , rRoom    :: Maybe T.Text
     } deriving (Show,Eq)
 
 instance FromJSON MessageReceived where
@@ -46,22 +46,25 @@ instance FromJSON MessageReceived where
 --
 data MessageResponse = MessageResponse
     { resMessage :: T.Text
-    , resColour :: Maybe MessageColour
-    , resRoom :: Maybe T.Text
+    , resColour  :: Maybe MessageColour
+    , resRoom    :: Maybe T.Text
+    , resFormat  :: Maybe T.Text
     } deriving (Show,Eq)
 
 instance Default MessageResponse where
     def = MessageResponse
         { resMessage = ""
-        , resColour = Nothing
-        , resRoom = Nothing
+        , resColour  = Nothing
+        , resRoom    = Nothing
+        , resFormat  = Nothing
         }
 
 instance ToJSON MessageResponse where
-    toJSON (MessageResponse m c r) = object
-        [ "message" .= m
-        , "colour"  .= c
-        , "room"    .= r
+    toJSON (MessageResponse m c r f) = object
+        [ "message"        .= m
+        , "colour"         .= c
+        , "room"           .= r
+        , "message_format" .= f
         ]
 
 instance FromJSON MessageResponse where
@@ -69,6 +72,7 @@ instance FromJSON MessageResponse where
                        <$> m .: "message"
                        <*> m .: "colour"
                        <*> m .: "room"
+                       <*> m .: "message_format"
     parseJSON _  = mzero
 
 data MessageColour = Yellow | Green | Red | Purple | Grey | Random
@@ -83,14 +87,24 @@ instance ToJSON MessageColour where
     toJSON Random = String "random"
 
 instance FromJSON MessageColour where
-    parseJSON (String c) = return $ col c
-      where
-        col "yellow" = Yellow
-        col "green"  = Green
-        col "red"    = Red
-        col "purple" = Purple
-        col "grey"   = Grey
-        col _        = Random
+    parseJSON (String c) = return $ case c of
+        "yellow" -> Yellow
+        "green"  -> Green
+        "red"    -> Red
+        "purple" -> Purple
+        "grey"   -> Grey
+        _        -> Random
+
+data MessageFormat = TextFormat | HtmlFormat
+
+instance ToJSON MessageFormat where
+    toJSON TextFormat = "text"
+    toJSON HtmlFormat = "html"
+
+instance FromJSON MessageFormat where
+    parseJSON (String c) = return $ case c of
+        "html" -> HtmlFormat
+        _      -> TextFormat
 
 --
 -- lock down the route output to this, so that we
@@ -98,10 +112,10 @@ instance FromJSON MessageColour where
 -- context. Stack a monad transformer.
 --
 data RouteState = RouteState
-    { rsMessage :: T.Text
-    , rsName    :: T.Text
-    , rsRoom    :: Maybe T.Text
-    , rsReplyFn :: (MessageResponse -> IO ())
+    { rsMessage   :: T.Text
+    , rsName      :: T.Text
+    , rsRoom      :: Maybe T.Text
+    , rsReplyFn   :: (MessageResponse -> IO ())
     , rsReminders :: Reminders (T.Text,MessageResponse)
     }
 
