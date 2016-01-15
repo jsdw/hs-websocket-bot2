@@ -8,6 +8,7 @@ import System.Environment  (getArgs)
 import Data.Monoid         ((<>))
 import Text.Read           (readMaybe)
 import Data.Default        (def)
+import Data.Aeson          (Value)
 
 import Network.Wai
 import Network.Wai.Handler.Warp
@@ -58,7 +59,7 @@ main = do
 -- This ignores things sent to it from hipchat and just
 -- relays messages off as they are posted here.
 --
-callback :: MVar MessageResponse -> IO () -> (MessageResponse -> IO ()) -> IO ()
+callback :: MVar MessageResponse -> IO Value -> (MessageResponse -> IO ()) -> IO ()
 callback msgVar _ write = forever $ takeMVar msgVar >>= write
 
 --
